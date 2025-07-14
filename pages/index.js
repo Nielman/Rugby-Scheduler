@@ -53,7 +53,7 @@ export default function Home() {
       }
       return club;
     });
-    setClubs(updated);
+    setClubs([...updated]);
   };
 
   const getMatchDuration = (age) => {
@@ -109,7 +109,7 @@ export default function Home() {
             startTime: new Date(ft),
             endTime: matchEnd,
           });
-          fieldTimes[f] = new Date(matchEnd);
+          fieldTimes[f] = addMinutes(matchEnd, 7);
           break;
         }
       }
