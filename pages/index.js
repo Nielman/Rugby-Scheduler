@@ -1,5 +1,4 @@
-
-// Full working app directly embedded in index.js
+// pages/index.js
 import React, { useState } from "react";
 import { format, addMinutes } from "date-fns";
 import { Button } from "../components/ui/button";
@@ -37,18 +36,6 @@ export default function Home() {
   const [schedule, setSchedule] = useState([]);
 
   const addClub = () => {
-const addTeamToClub = () => {
-    if (!selectedClub || teamCount <= 0) return;
-    const updated = clubs.map((club) => {
-      if (club.name === selectedClub) {
-        const newTeams = { ...club.teams };
-        newTeams[selectedAgeGroup] = (newTeams[selectedAgeGroup] || 0) + teamCount;
-        return { ...club, teams: newTeams };
-      }
-      return club;
-    });
-    setClubs([...updated]);
-  };
     if (!newClubName.trim() || clubs.find((c) => c.name === newClubName)) return;
     const newClubs = [...clubs, { name: newClubName, teams: {} }];
     setClubs(newClubs);
