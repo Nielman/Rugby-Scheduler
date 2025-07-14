@@ -37,13 +37,19 @@ export default function Home() {
   const [schedule, setSchedule] = useState([]);
 
   const addClub = () => {
-    if (!newClubName.trim() || clubs.find((c) => c.name === newClubName)) return;
-    const newClubs = [...clubs, { name: newClubName, teams: {} }];
-    setClubs(newClubs);
-    setSelectedClub(newClubName);
-    setNewClubName("");
+const addTeamToClub = () => {
+    if (!selectedClub || teamCount <= 0) return;
+    const updated = clubs.map((club) => {
+      if (club.name === selectedClub) {
+        const newTeams = { ...club.teams };
+        newTeams[selectedAgeGroup] = (newTeams[selectedAgeGroup] || 0) + teamCount;
+        return { ...club, teams: newTeams };
+      }
+      return club;
+    });
+    setClubs([...updated]);
   };
-if (!newClubName.trim() || clubs.find((c) => c.name === newClubName)) return;
+    if (!newClubName.trim() || clubs.find((c) => c.name === newClubName)) return;
     const newClubs = [...clubs, { name: newClubName, teams: {} }];
     setClubs(newClubs);
     setSelectedClub(newClubName);
@@ -75,7 +81,7 @@ if (!newClubName.trim() || clubs.find((c) => c.name === newClubName)) return;
       clubs.forEach((club) => {
         const count = club.teams[age] || 0;
         for (let i = 0; i < count; i++) {
-          allTeams.push({ name: `${club.name} ${age} #${i + 1}`, club: club.name, age });
+          allTeams.push({ name: club.name + " " + age + " #" + (i + 1), club: club.name, age });
         }
       });
       for (let i = 0; i < allTeams.length; i++) {
@@ -93,8 +99,8 @@ if (!newClubName.trim() || clubs.find((c) => c.name === newClubName)) return;
     });
 
     const shuffled = matches.sort(() => Math.random() - 0.5);
-    const start = new Date(`1970-01-01T${startTime}:00`);
-    const end = new Date(`1970-01-01T${endTime}:00`);
+    const start = new Date("1970-01-01T" + startTime + ":00");
+    const end = new Date("1970-01-01T" + endTime + ":00");
     const fieldTimes = FIELD_NAMES.map(() => new Date(start));
     const scheduled = [];
 
@@ -180,7 +186,7 @@ if (!newClubName.trim() || clubs.find((c) => c.name === newClubName)) return;
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {schedule.map((match, idx) => (
           <Card key={idx}>
-            <CardContent className={`p-4 ${AGE_COLORS[match.age]}`}>
+            <CardContent className={"p-4 " + AGE_COLORS[match.age]}>
               <p className="font-bold">{match.age} | {match.teamA.name} vs {match.teamB.name}</p>
               <p>{match.field}</p>
               <p>{format(match.startTime, "HH:mm")} - {format(match.endTime, "HH:mm")}</p>
