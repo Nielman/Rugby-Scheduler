@@ -54,7 +54,7 @@ export default function Home() {
       }
       return club;
     });
-    setClubs(updated);
+    setClubs([...updated]);
   };
 
   const getMatchDuration = (age) => {
