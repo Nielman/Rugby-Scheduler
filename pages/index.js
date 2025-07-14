@@ -71,7 +71,7 @@ const addTeamToClub = () => {
 
   const getMatchDuration = (age) => {
     const rule = AGE_RULES[age];
-    return rule.halves * rule.halfDuration + rule.break + BETWEEN_MATCHES_BREAK;
+    return rule.halves * rule.halfDuration + rule.break;
   };
 
   const generateSchedule = () => {
