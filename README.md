@@ -1,24 +1,20 @@
 
-# Rugby Match Day Scheduler
+# Rugby Hosting Day Scheduler
 
-This is a web app to manage and generate a randomized rugby match day schedule.
+This web app allows Centurion Youth Rugby Club to create match day schedules with multiple clubs and age groups.
 
-## 🏗️ Tech Stack
+## Features
+- Support for U8–U13 with time rules
+- Add multiple clubs and team counts
+- Randomized schedule
+- Field conflict prevention for same age group
+- CSV export
+- Hosted via GitHub + Vercel
 
-- React (Next.js)
-- Tailwind CSS
-- TypeScript
-- Hosted on Vercel
-
-## 🚀 Getting Started
-
+## Setup
 ```bash
 npm install
 npm run dev
 ```
 
-## 📦 Deployment
-
-Push to GitHub, then import repo into [Vercel](https://vercel.com/import) for instant deployment.
-
----
+Deploy using Vercel.
