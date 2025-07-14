@@ -38,11 +38,14 @@ export default function Home() {
 
   const addClub = () => {
     if (!newClubName.trim() || clubs.find((c) => c.name === newClubName)) return;
-    setClubs([...clubs, { name: newClubName, teams: {} }]);
+    const newClubs = [...clubs, { name: newClubName, teams: {} }];
+    setClubs(newClubs);
+    setSelectedClub(newClubName);
     setNewClubName("");
   };
 
   const addTeamToClub = () => {
+    if (!selectedClub || teamCount <= 0) return;
     const updated = clubs.map((club) => {
       if (club.name === selectedClub) {
         const prev = club.teams[selectedAgeGroup] || 0;
@@ -147,7 +150,7 @@ export default function Home() {
         <select className="border p-2 rounded-xl" value={selectedAgeGroup} onChange={(e) => setSelectedAgeGroup(e.target.value)}>
           {AGE_GROUPS.map((a) => <option key={a}>{a}</option>)}
         </select>
-        <Input type="number" className="w-20" value={teamCount} onChange={(e) => setTeamCount(+e.target.value)} />
+        <Input type="number" min="1" className="w-20" value={teamCount} onChange={(e) => setTeamCount(+e.target.value)} />
         <Button onClick={addTeamToClub}>Add Teams</Button>
       </div>
 
