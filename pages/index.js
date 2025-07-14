@@ -48,12 +48,13 @@ export default function Home() {
     if (!selectedClub || teamCount <= 0) return;
     const updated = clubs.map((club) => {
       if (club.name === selectedClub) {
-        const prev = club.teams[selectedAgeGroup] || 0;
-        return { ...club, teams: { ...club.teams, [selectedAgeGroup]: prev + teamCount } };
+        const newTeams = { ...club.teams };
+        newTeams[selectedAgeGroup] = (newTeams[selectedAgeGroup] || 0) + teamCount;
+        return { ...club, teams: newTeams };
       }
       return club;
     });
-    setClubs([...updated]);
+    setClubs(updated);
   };
 
   const getMatchDuration = (age) => {
