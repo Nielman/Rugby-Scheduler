@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { addMinutes, format } from "date-fns";
 
 const AGE_RULES = {
@@ -15,14 +15,14 @@ const BETWEEN_MATCHES_BREAK = 7;
 
 const s = {
   page: { padding: 16, fontFamily: "system-ui, Arial, sans-serif", lineHeight: 1.4 },
-  h1: { fontSize: 22, fontWeight: 700, marginBottom: 12 },
+  h1: { fontSize: 22, fontWeight: 700, marginBottom: 8 },
   row: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 },
   input: { border: "1px solid #ddd", borderRadius: 6, padding: "8px 10px" },
   select: { border: "1px solid #ddd", borderRadius: 6, padding: "8px 10px" },
   btn: { background: "#2563eb", color: "#fff", border: 0, borderRadius: 6, padding: "8px 12px", cursor: "pointer" },
   btnGreen: { background: "#16a34a", color: "#fff", border: 0, borderRadius: 6, padding: "8px 12px", cursor: "pointer" },
   btnGray: { background: "#6b7280", color: "#fff", border: 0, borderRadius: 6, padding: "8px 12px", cursor: "pointer" },
-  colWrap: { display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start" },
+  grid2: { display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start" },
   card: { border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, background: "#f9fafb" },
   label: { fontSize: 12, color: "#374151" },
   success: { color: "#16a34a", fontWeight: 600, marginTop: 4, marginBottom: 6 },
@@ -40,9 +40,69 @@ export default function Home() {
   const [schedule, setSchedule] = useState([]);
   const [message, setMessage] = useState("");
 
+  // Print header
+  const [hostName, setHostName] = useState("Centurion Youth Rugby Club");
+  const [logoUrl, setLogoUrl] = useState("");
+
+  // ---- Persistence (Only B) ----
+  const saveConfig = () => {
+    try {
+      const data = { clubs, startTime, endTime, hostName, logoUrl };
+      localStorage.setItem("rugbySchedulerConfig", JSON.stringify(data));
+      setMessage("Config saved");
+      setTimeout(() => setMessage(""), 1500);
+    } catch {}
+  };
+
+  const loadConfig = () => {
+    try {
+      const raw = localStorage.getItem("rugbySchedulerConfig");
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (data?.clubs) setClubs(data.clubs);
+      if (data?.startTime) setStartTime(data.startTime);
+      if (data?.endTime) setEndTime(data.endTime);
+      if (data?.hostName) setHostName(data.hostName);
+      if (data?.logoUrl !== undefined) setLogoUrl(data.logoUrl);
+      setSelectedClub((data?.clubs?.[0]?.name) || "Centurion Youth Rugby Club");
+      setMessage("Config loaded");
+      setTimeout(() => setMessage(""), 1500);
+    } catch {}
+  };
+
+  const clearSaved = () => {
+    try {
+      localStorage.removeItem("rugbySchedulerConfig");
+      setMessage("Saved config cleared");
+      setTimeout(() => setMessage(""), 1500);
+    } catch {}
+  };
+
+  useEffect(() => {
+    // auto-load on first mount (best-effort)
+    try {
+      const raw = localStorage.getItem("rugbySchedulerConfig");
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data?.clubs) setClubs(data.clubs);
+        if (data?.startTime) setStartTime(data.startTime);
+        if (data?.endTime) setEndTime(data.endTime);
+        if (data?.hostName) setHostName(data.hostName);
+        if (data?.logoUrl !== undefined) setLogoUrl(data.logoUrl);
+        setSelectedClub((data?.clubs?.[0]?.name) || "Centurion Youth Rugby Club");
+      }
+    } catch {}
+  }, []);
+
+  // ---- helpers ----
+  const normalizeEntry = (raw) => {
+    if (typeof raw === "number") return { count: raw, desired: "" };
+    return { count: Number(raw?.count || 0), desired: raw?.desired ?? "" };
+  };
+
   const matchDuration = (age) => {
     const r = AGE_RULES[age];
-    return r.halves * r.halfDuration + r.halftime; // only match time
+    return r.halves * r.halfDuration + r.halftime; // no 7 here
   };
 
   const addClub = () => {
@@ -59,7 +119,8 @@ export default function Home() {
       prev.map((c) => {
         if (c.name !== selectedClub) return c;
         const nt = { ...(c.teams || {}) };
-        nt[selectedAgeGroup] = (nt[selectedAgeGroup] || 0) + Number(teamCount);
+        const entry = normalizeEntry(nt[selectedAgeGroup]);
+        nt[selectedAgeGroup] = { count: (entry.count || 0) + Number(teamCount), desired: entry.desired };
         return { ...c, teams: nt };
       })
     );
@@ -67,9 +128,21 @@ export default function Home() {
     setTimeout(() => setMessage(""), 2000);
   };
 
+  const setDesiredFor = (clubName, age, val) => {
+    setClubs((prev) =>
+      prev.map((c) => {
+        if (c.name !== clubName) return c;
+        const nt = { ...(c.teams || {}) };
+        const entry = normalizeEntry(nt[age]);
+        nt[age] = { count: entry.count, desired: val };
+        return { ...c, teams: nt };
+      })
+    );
+  };
+
   const removeClub = (clubName) => {
     setClubs((prev) => prev.filter((c) => c.name !== clubName));
-    if (selectedClub === clubName) setSelectedClub("Centurion Youth Rugby Club");
+    if (selectedClub === clubName) setSelectedClub(clubs[0]?.name || "");
   };
 
   const removeAgeFromClub = (clubName, age) => {
@@ -83,14 +156,15 @@ export default function Home() {
     );
   };
 
+  // ---- pairing builder ----
   const buildMatches = () => {
     const matches = [];
     AGE_GROUPS.forEach((age) => {
       const allTeams = [];
       clubs.forEach((club) => {
-        const count = Number(club.teams?.[age] || 0);
-        for (let i = 0; i < count; i++) {
-          allTeams.push({ name: `${club.name} ${age} #${i + 1}`, club: club.name, age });
+        const entry = normalizeEntry(club.teams?.[age]);
+        for (let i = 0; i < (entry.count || 0); i++) {
+          allTeams.push({ name: `${club.name} ${age} #${i + 1}`, club: club.name, age, desired: entry.desired });
         }
       });
       for (let i = 0; i < allTeams.length; i++) {
@@ -101,6 +175,7 @@ export default function Home() {
         }
       }
     });
+    // shuffle
     for (let i = matches.length - 1; i > 0; i--) {
       const k = Math.floor(Math.random() * (i + 1));
       [matches[i], matches[k]] = [matches[k], matches[i]];
@@ -108,6 +183,7 @@ export default function Home() {
     return matches;
   };
 
+  // ---- scheduling ----
   const generateSchedule = () => {
     const matches = buildMatches();
     const dayStart = new Date(`1970-01-01T${startTime}:00`);
@@ -115,6 +191,19 @@ export default function Home() {
     const fieldTimes = { "Field A": new Date(dayStart), "Field B": new Date(dayStart) };
     const fieldCounts = { "Field A": 0, "Field B": 0 };
     const out = [];
+    const desiredCap = {}; // per team name -> number (Infinity if blank)
+    const gamesByTeam = {};
+
+    // build desired caps from clubs
+    clubs.forEach((club) => {
+      AGE_GROUPS.forEach((age) => {
+        const entry = normalizeEntry(club.teams?.[age]);
+        const cap = entry.desired === "" ? Infinity : Math.max(0, Number(entry.desired));
+        for (let i = 0; i < (entry.count || 0); i++) {
+          desiredCap[`${club.name} ${age} #${i + 1}`] = cap;
+        }
+      });
+    });
 
     const hasParallelSameClub = (candidateStart, age, clubsToCheck) =>
       out.some(
@@ -125,6 +214,12 @@ export default function Home() {
       );
 
     for (const m of matches) {
+      const tA = m.teamA.name;
+      const tB = m.teamB.name;
+      const capA = desiredCap[tA] ?? Infinity;
+      const capB = desiredCap[tB] ?? Infinity;
+      if ((gamesByTeam[tA] || 0) >= capA || (gamesByTeam[tB] || 0) >= capB) continue;
+
       const candidates = FIELDS.map((f) => {
         const start = new Date(fieldTimes[f]);
         const end = addMinutes(start, m.duration);
@@ -144,14 +239,16 @@ export default function Home() {
       const chosen = valid[0];
 
       out.push({ ...m, field: chosen.field, startTime: chosen.start, endTime: chosen.end });
-
-      fieldTimes[chosen.field] = addMinutes(chosen.end, BETWEEN_MATCHES_BREAK); // between matches only
+      gamesByTeam[tA] = (gamesByTeam[tA] || 0) + 1;
+      gamesByTeam[tB] = (gamesByTeam[tB] || 0) + 1;
+      fieldTimes[chosen.field] = addMinutes(chosen.end, BETWEEN_MATCHES_BREAK);
       fieldCounts[chosen.field] += 1;
     }
 
     setSchedule(out);
   };
 
+  // ---- export ----
   const exportCSV = () => {
     if (!schedule.length) return;
     const headers = ["Field", "Age Group", "Start Time", "End Time", "Team A", "Team B"];
@@ -168,17 +265,40 @@ export default function Home() {
   const summary = useMemo(() => {
     if (!schedule.length) return null;
     const lastEnd = schedule.reduce((max, m) => (m.endTime > max ? m.endTime : max), schedule[0].endTime);
-    const perField = FIELDS.reduce((acc, f) => { acc[f] = schedule.filter((m) => m.field === f).length; return acc; }, {});
+    const perField = FIELDS.reduce((acc, f) => {
+      acc[f] = schedule.filter((m) => m.field === f).length;
+      return acc;
+    }, {});
     return { lastEnd, perField, total: schedule.length };
   }, [schedule]);
+
+  const halfs = (m) => {
+    const r = AGE_RULES[m.age];
+    const h = r.halfDuration, ht = r.halftime;
+    const firstHalfEnd = addMinutes(m.startTime, h);
+    const secondHalfStart = addMinutes(firstHalfEnd, ht);
+    const secondHalfEnd = addMinutes(secondHalfStart, h);
+    return { firstHalfEnd, secondHalfStart, secondHalfEnd };
+  };
 
   return (
     <div style={s.page}>
       <h1 style={s.h1}>Rugby Hosting Day Scheduler</h1>
       {message ? <div style={s.success}>✅ {message}</div> : null}
 
-      {/* controls (hidden when printing) */}
-      <div className="no-print" style={s.colWrap}>
+      {/* Print header settings */}
+      <div className="no-print" style={s.card}>
+        <div style={s.label}>Print Header</div>
+        <div style={s.row}>
+          <input placeholder="Host/Club name" value={hostName} onChange={(e) => setHostName(e.target.value)} style={{ ...s.input, minWidth: 260 }} />
+          <input placeholder="Logo URL (optional)" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} style={{ ...s.input, minWidth: 260 }} />
+          <button onClick={saveConfig} style={s.btnGray}>Save</button>
+          <button onClick={loadConfig} style={s.btnGray}>Load</button>
+          <button onClick={clearSaved} style={s.btnGray}>Clear Saved</button>
+        </div>
+      </div>
+
+      <div className="no-print" style={s.grid2}>
         <div>
           <div style={s.row}>
             <input placeholder="New Club Name" value={newClubName} onChange={(e) => setNewClubName(e.target.value)} style={s.input} />
@@ -198,24 +318,29 @@ export default function Home() {
           </div>
 
           <div style={s.card}>
-            <div style={s.label}>Current Clubs & Teams</div>
+            <div style={s.label}>Current Clubs & Teams (requested games per team)</div>
             <ul style={{ marginTop: 6 }}>
               {clubs.map((club) => (
                 <li key={club.name} style={{ marginTop: 6 }}>
                   <b>{club.name}</b>{" "}
-                  {club.name !== "Centurion Youth Rugby Club" && (
-                    <button onClick={() => removeClub(club.name)} style={{ ...s.btnGray, padding: "2px 8px", marginLeft: 6 }} title="Remove club">Remove Club</button>
-                  )}
+                  <button onClick={() => removeClub(club.name)} style={{ ...s.btnGray, padding: "2px 8px", marginLeft: 6 }} title="Remove club">Remove Club</button>
                   <ul style={{ marginTop: 4, marginLeft: 14 }}>
                     {Object.keys(club.teams || {}).length === 0 ? (
                       <li style={{ color: "#6b7280", fontStyle: "italic" }}>No teams added yet</li>
                     ) : (
-                      Object.entries(club.teams).map(([age, count]) => (
-                        <li key={age} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span>{age}: {count} team(s) — {matchDuration(age)} min</span>
-                          <button onClick={() => removeAgeFromClub(club.name, age)} style={{ ...s.btnGray, padding: "2px 8px" }} title="Remove age group">✕</button>
-                        </li>
-                      ))
+                      Object.entries(club.teams).map(([age, raw]) => {
+                        const entry = normalizeEntry(raw);
+                        return (
+                          <li key={age} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                            <span>{age}: {entry.count} team(s)</span>
+                            <input type="number" min="0" placeholder="requested games / team" value={entry.desired}
+                                   onChange={(e) => setDesiredFor(club.name, age, e.target.value)}
+                                   style={{ ...s.input, width: 190 }} title="Leave blank for unlimited" />
+                            <span style={{ fontSize: 12, color: "#374151" }}>match time: {matchDuration(age)}m</span>
+                            <button onClick={() => removeAgeFromClub(club.name, age)} style={{ ...s.btnGray, padding: "2px 8px" }} title="Remove age group">✕</button>
+                          </li>
+                        );
+                      })
                     )}
                   </ul>
                 </li>
@@ -252,7 +377,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* on-screen schedule (hidden when printing) */}
+      {/* On-screen schedule */}
       <div className="no-print" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
         {schedule.map((m, i) => {
           const r = AGE_RULES[m.age];
@@ -274,10 +399,17 @@ export default function Home() {
         })}
       </div>
 
-      {/* print-only pages: one field per page */}
+      {/* Print-only pages with logo + host header and field per page */}
       <div className="print-only">
         {FIELDS.map((f) => (
           <div key={f} className="page">
+            <div className="print-header">
+              <div className="print-brand">
+                {logoUrl ? <img src={logoUrl} alt="Logo" /> : null}
+                <div className="print-host">{hostName}</div>
+              </div>
+              <div style={{ fontSize: "12pt" }}>{f}</div>
+            </div>
             <h2 className="print-h2">Schedule — {f}</h2>
             {schedule.filter((m) => m.field === f).length === 0 && <div>No matches scheduled on {f}.</div>}
             {schedule.filter((m) => m.field === f).map((m, i) => {
@@ -301,7 +433,7 @@ export default function Home() {
         ))}
       </div>
 
-      {/* footer summary */}
+      {/* Footer summary (screen only) */}
       {useMemo(() => {
         if (!schedule.length) return null;
         const lastEnd = schedule.reduce((max, m) => (m.endTime > max ? m.endTime : max), schedule[0].endTime);
