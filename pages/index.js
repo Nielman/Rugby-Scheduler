@@ -1,30 +1,32 @@
-
-// Full working app directly embedded in index.js
 import React, { useState } from "react";
-import { format, addMinutes } from "date-fns";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Card, CardContent } from "../components/ui/card";
+import { addMinutes, format } from "date-fns";
 
-const AGE_GROUPS = ["U8", "U9", "U10", "U11", "U12", "U13"];
-const AGE_COLORS = {
-  U8: "bg-green-100",
-  U9: "bg-yellow-100",
-  U10: "bg-blue-100",
-  U11: "bg-purple-100",
-  U12: "bg-pink-100",
-  U13: "bg-red-100",
-};
 const AGE_RULES = {
-  U8: { halves: 2, halfDuration: 15, break: 5 },
-  U9: { halves: 2, halfDuration: 20, break: 5 },
-  U10: { halves: 2, halfDuration: 20, break: 5 },
-  U11: { halves: 2, halfDuration: 20, break: 5 },
-  U12: { halves: 2, halfDuration: 20, break: 5 },
-  U13: { halves: 2, halfDuration: 25, break: 5 },
+  U8: { halves: 2, halfDuration: 15, halftime: 5 },
+  U9: { halves: 2, halfDuration: 20, halftime: 5 },
+  U10: { halves: 2, halfDuration: 20, halftime: 5 },
+  U11: { halves: 2, halfDuration: 20, halftime: 5 },
+  U12: { halves: 2, halfDuration: 20, halftime: 5 },
+  U13: { halves: 2, halfDuration: 25, halftime: 5 }
 };
-const FIELD_NAMES = ["Field A", "Field B"];
+const AGE_GROUPS = Object.keys(AGE_RULES);
+const FIELDS = ["Field A", "Field B"];
 const BETWEEN_MATCHES_BREAK = 7;
+
+const s = {
+  page: { padding: 16, fontFamily: "system-ui, Arial, sans-serif", lineHeight: 1.4 },
+  h1: { fontSize: 22, fontWeight: 700, marginBottom: 12 },
+  row: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 },
+  input: { border: "1px solid #ddd", borderRadius: 6, padding: "8px 10px" },
+  select: { border: "1px solid #ddd", borderRadius: 6, padding: "8px 10px" },
+  btn: { background: "#2563eb", color: "#fff", border: 0, borderRadius: 6, padding: "8px 12px", cursor: "pointer" },
+  btnGreen: { background: "#16a34a", color: "#fff", border: 0, borderRadius: 6, padding: "8px 12px", cursor: "pointer" },
+  btnGray: { background: "#6b7280", color: "#fff", border: 0, borderRadius: 6, padding: "8px 12px", cursor: "pointer" },
+  colWrap: { display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start" },
+  card: { border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, background: "#f9fafb" },
+  label: { fontSize: 12, color: "#374151" },
+  success: { color: "#16a34a", fontWeight: 600, marginTop: 4, marginBottom: 6 }
+};
 
 export default function Home() {
   const [clubs, setClubs] = useState([{ name: "Centurion Youth Rugby Club", teams: {} }]);
@@ -35,53 +37,60 @@ export default function Home() {
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("17:00");
   const [schedule, setSchedule] = useState([]);
+  const [message, setMessage] = useState("");
+  const [maxGamesCap, setMaxGamesCap] = useState("");
+
+  const matchDuration = (age) => {
+    const r = AGE_RULES[age];
+    return r.halves * r.halfDuration + r.halftime;
+  };
 
   const addClub = () => {
-const addTeamToClub = () => {
-    if (!selectedClub || teamCount <= 0) return;
-    const updated = clubs.map((club) => {
-      if (club.name === selectedClub) {
-        const newTeams = { ...club.teams };
-        newTeams[selectedAgeGroup] = (newTeams[selectedAgeGroup] || 0) + teamCount;
-        return { ...club, teams: newTeams };
-      }
-      return club;
-    });
-    setClubs([...updated]);
-  };
-    if (!newClubName.trim() || clubs.find((c) => c.name === newClubName)) return;
-    const newClubs = [...clubs, { name: newClubName, teams: {} }];
-    setClubs(newClubs);
-    setSelectedClub(newClubName);
+    const name = newClubName.trim();
+    if (!name || clubs.some((c) => c.name.toLowerCase() === name.toLowerCase())) return;
+    setClubs((prev) => [...prev, { name, teams: {} }]);
+    setSelectedClub(name);
     setNewClubName("");
   };
 
   const addTeamToClub = () => {
     if (!selectedClub || teamCount <= 0) return;
-    const updated = clubs.map((club) => {
-      if (club.name === selectedClub) {
-        const newTeams = { ...club.teams };
-        newTeams[selectedAgeGroup] = (newTeams[selectedAgeGroup] || 0) + teamCount;
-        return { ...club, teams: newTeams };
-      }
-      return club;
-    });
-    setClubs([...updated]);
+    setClubs((prev) =>
+      prev.map((c) => {
+        if (c.name !== selectedClub) return c;
+        const nt = { ...(c.teams || {}) };
+        nt[selectedAgeGroup] = (nt[selectedAgeGroup] || 0) + Number(teamCount);
+        return { ...c, teams: nt };
+      })
+    );
+    setMessage(`${teamCount} ${selectedAgeGroup} team(s) added to ${selectedClub}`);
+    setTimeout(() => setMessage(""), 2500);
   };
 
-  const getMatchDuration = (age) => {
-    const rule = AGE_RULES[age];
-    return rule.halves * rule.halfDuration + rule.break;
+  const removeClub = (clubName) => {
+    setClubs((prev) => prev.filter((c) => c.name !== clubName));
+    if (selectedClub === clubName) setSelectedClub("Centurion Youth Rugby Club");
   };
 
-  const generateSchedule = () => {
+  const removeAgeFromClub = (clubName, age) => {
+    setClubs((prev) =>
+      prev.map((c) => {
+        if (c.name !== clubName) return c;
+        const nt = { ...(c.teams || {}) };
+        delete nt[age];
+        return { ...c, teams: nt };
+      })
+    );
+  };
+
+  const buildMatches = () => {
     const matches = [];
     AGE_GROUPS.forEach((age) => {
       const allTeams = [];
       clubs.forEach((club) => {
-        const count = club.teams[age] || 0;
+        const count = Number(club.teams?.[age] || 0);
         for (let i = 0; i < count; i++) {
-          allTeams.push({ name: club.name + " " + age + " #" + (i + 1), club: club.name, age });
+          allTeams.push({ name: `${club.name} ${age} #${i + 1}`, club: club.name, age });
         }
       });
       for (let i = 0; i < allTeams.length; i++) {
@@ -91,47 +100,72 @@ const addTeamToClub = () => {
               age,
               teamA: allTeams[i],
               teamB: allTeams[j],
-              duration: getMatchDuration(age),
+              duration: matchDuration(age)
             });
           }
         }
       }
     });
+    for (let i = matches.length - 1; i > 0; i--) {
+      const k = Math.floor(Math.random() * (i + 1));
+      [matches[i], matches[k]] = [matches[k], matches[i]];
+    }
+    return matches;
+  };
 
-    const shuffled = matches.sort(() => Math.random() - 0.5);
-    const start = new Date("1970-01-01T" + startTime + ":00");
-    const end = new Date("1970-01-01T" + endTime + ":00");
-    const fieldTimes = FIELD_NAMES.map(() => new Date(start));
-    const scheduled = [];
+  const generateSchedule = () => {
+    const matches = buildMatches();
+    const dayStart = new Date(`1970-01-01T${startTime}:00`);
+    const dayEnd = new Date(`1970-01-01T${endTime}:00`);
+    const fieldTimes = { "Field A": new Date(dayStart), "Field B": new Date(dayStart) };
+    const fieldCounts = { "Field A": 0, "Field B": 0 };
+    const gamesByTeam = {};
+    const maxCap = Number(maxGamesCap) > 0 ? Number(maxGamesCap) : Infinity;
 
-    for (const match of shuffled) {
-      for (let f = 0; f < FIELD_NAMES.length; f++) {
-        const ft = fieldTimes[f];
-        const conflict = scheduled.some((m) =>
-          m.age === match.age &&
-          m.age === "U13" &&
-          (m.teamA.club === match.teamA.club || m.teamB.club === match.teamA.club) &&
-          format(m.startTime, "HH:mm") === format(ft, "HH:mm")
-        );
+    const out = [];
 
-        const matchEnd = addMinutes(ft, match.duration);
-        if (!conflict && matchEnd <= end) {
-          scheduled.push({
-            ...match,
-            field: FIELD_NAMES[f],
-            startTime: new Date(ft),
-            endTime: matchEnd,
-          });
-          fieldTimes[f] = addMinutes(matchEnd, 7);
-          break;
-        }
-      }
+    const hasParallelSameClub = (candidateStart, age, clubsToCheck) =>
+      out.some(
+        (x) =>
+          x.age === age &&
+          format(x.startTime, "HH:mm") === format(candidateStart, "HH:mm") &&
+          (clubsToCheck.includes(x.teamA.club) || clubsToCheck.includes(x.teamB.club))
+      );
+
+    for (const m of matches) {
+      const tA = m.teamA.name;
+      const tB = m.teamB.name;
+      if ((gamesByTeam[tA] || 0) >= maxCap || (gamesByTeam[tB] || 0) >= maxCap) continue;
+
+      const candidates = FIELDS.map((f) => {
+        const start = new Date(fieldTimes[f]);
+        const end = addMinutes(start, m.duration);
+        const parallelConflict = hasParallelSameClub(start, m.age, [m.teamA.club, m.teamB.club]);
+        const fits = end <= dayEnd && !parallelConflict;
+        return { field: f, start, end, fits };
+      });
+
+      const valid = candidates.filter((c) => c.fits);
+      if (!valid.length) continue;
+
+      valid.sort((a, b) => {
+        if (a.end.getTime() !== b.end.getTime()) return a.end - b.end;
+        return fieldCounts[a.field] - fieldCounts[b.field];
+      });
+
+      const chosen = valid[0];
+      out.push({ ...m, field: chosen.field, startTime: chosen.start, endTime: chosen.end });
+      gamesByTeam[tA] = (gamesByTeam[tA] || 0) + 1;
+      gamesByTeam[tB] = (gamesByTeam[tB] || 0) + 1;
+      fieldTimes[chosen.field] = addMinutes(chosen.end, BETWEEN_MATCHES_BREAK);
+      fieldCounts[chosen.field] += 1;
     }
 
-    setSchedule(scheduled);
+    setSchedule(out);
   };
 
   const exportCSV = () => {
+    if (!schedule.length) return;
     const headers = ["Field", "Age Group", "Start Time", "End Time", "Team A", "Team B"];
     const rows = schedule.map((m) => [
       m.field,
@@ -139,60 +173,173 @@ const addTeamToClub = () => {
       format(m.startTime, "HH:mm"),
       format(m.endTime, "HH:mm"),
       m.teamA.name,
-      m.teamB.name,
+      m.teamB.name
     ]);
     const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "match_schedule.csv");
-    link.click();
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "match_schedule.csv";
+    a.click();
+  };
+
+  const clearAll = () => {
+    setClubs([{ name: "Centurion Youth Rugby Club", teams: {} }]);
+    setSelectedClub("Centurion Youth Rugby Club");
+    setSchedule([]);
+    setMessage("");
+    setMaxGamesCap("");
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Rugby Hosting Day Scheduler</h1>
+    <div style={s.page}>
+      <h1 style={s.h1}>Rugby Hosting Day Scheduler</h1>
+      {message ? <div style={s.success}>✅ {message}</div> : null}
 
-      <div className="flex gap-2 flex-wrap">
-        <Input placeholder="New Club Name" value={newClubName} onChange={(e) => setNewClubName(e.target.value)} />
-        <Button onClick={addClub}>Add Club</Button>
-        <select className="border p-2 rounded-xl" value={selectedClub} onChange={(e) => setSelectedClub(e.target.value)}>
-          {clubs.map((c) => <option key={c.name}>{c.name}</option>)}
-        </select>
-        <select className="border p-2 rounded-xl" value={selectedAgeGroup} onChange={(e) => setSelectedAgeGroup(e.target.value)}>
-          {AGE_GROUPS.map((a) => <option key={a}>{a}</option>)}
-        </select>
-        <Input type="number" min="1" className="w-20" value={teamCount} onChange={(e) => setTeamCount(+e.target.value)} />
-        <Button onClick={addTeamToClub}>Add Teams</Button>
+      <div style={s.colWrap}>
+        <div>
+          <div style={s.row}>
+            <input
+              placeholder="New Club Name"
+              value={newClubName}
+              onChange={(e) => setNewClubName(e.target.value)}
+              style={s.input}
+            />
+            <button onClick={addClub} style={s.btn}>Add Club</button>
+
+            <select value={selectedClub} onChange={(e) => setSelectedClub(e.target.value)} style={s.select}>
+              {clubs.map((c) => (
+                <option key={c.name}>{c.name}</option>
+              ))}
+            </select>
+
+            <select value={selectedAgeGroup} onChange={(e) => setSelectedAgeGroup(e.target.value)} style={s.select}>
+              {AGE_GROUPS.map((a) => (
+                <option key={a}>{a}</option>
+              ))}
+            </select>
+
+            <input
+              type="number"
+              min="1"
+              value={teamCount}
+              onChange={(e) => setTeamCount(Number(e.target.value))}
+              style={{ ...s.input, width: 80 }}
+            />
+            <button onClick={addTeamToClub} style={s.btnGreen}>Add Teams</button>
+            <button onClick={clearAll} style={s.btnGray}>Clear All</button>
+          </div>
+
+          <div style={s.card}>
+            <div style={s.label}>Current Clubs & Teams</div>
+            <ul style={{ marginTop: 6 }}>
+              {clubs.map((club) => (
+                <li key={club.name} style={{ marginTop: 6 }}>
+                  <b>{club.name}</b>{" "}
+                  {club.name !== "Centurion Youth Rugby Club" && (
+                    <button
+                      onClick={() => removeClub(club.name)}
+                      style={{ ...s.btnGray, padding: "2px 8px", marginLeft: 6 }}
+                      title="Remove club"
+                    >
+                      Remove Club
+                    </button>
+                  )}
+                  <ul style={{ marginTop: 4, marginLeft: 14 }}>
+                    {Object.keys(club.teams || {}).length === 0 ? (
+                      <li style={{ color: "#6b7280", fontStyle: "italic" }}>No teams added yet</li>
+                    ) : (
+                      Object.entries(club.teams).map(([age, count]) => (
+                        <li key={age} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span>
+                            {age}: {count} team(s) — {matchDuration(age)} min
+                          </span>
+                          <button
+                            onClick={() => removeAgeFromClub(club.name, age)}
+                            style={{ ...s.btnGray, padding: "2px 8px" }}
+                            title="Remove this age group from club"
+                          >
+                            ✕
+                          </button>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div style={s.card}>
+            <div style={s.label}>Match Day Window</div>
+            <div style={{ ...s.row, marginTop: 6 }}>
+              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} style={s.input} />
+              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={s.input} />
+              <input
+                type="number"
+                min="1"
+                placeholder="Max games per team (optional)"
+                value={maxGamesCap}
+                onChange={(e) => setMaxGamesCap(e.target.value)}
+                style={{ ...s.input, width: 220 }}
+              />
+              <button onClick={generateSchedule} style={s.btn}>Generate Schedule</button>
+              <button onClick={exportCSV} style={s.btnGray}>Export CSV</button>
+              {schedule.length > 0 ? (
+                <span style={{ fontSize: 12, color: "#065f46" }}>Total Matches: {schedule.length}</span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div style={s.card}>
+            <div style={s.label}>Age Group Rules (per match)</div>
+            <ul style={{ marginTop: 6 }}>
+              {AGE_GROUPS.map((age) => {
+                const r = AGE_RULES[age];
+                const total = matchDuration(age);
+                return (
+                  <li key={age}>
+                    <b>{age}</b>: {r.halves} × {r.halfDuration}m + {r.halftime}m halftime = <b>{total}m</b>
+                  </li>
+                );
+              })}
+            </ul>
+            <div style={{ marginTop: 6, fontSize: 12, color: "#374151" }}>
+              + {BETWEEN_MATCHES_BREAK}m break between matches (not included above)
+            </div>
+            <div style={{ marginTop: 6, fontSize: 12, color: "#374151" }}>
+              Parallel same-club blocked across fields for all ages.
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="flex gap-4">
-        <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-        <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-        <Button onClick={generateSchedule}>Generate Schedule</Button>
-        <Button onClick={exportCSV}>Export CSV</Button>
-      </div>
-
-      <div className="flex flex-wrap gap-2 text-sm">
-        <p><span className="inline-block w-4 h-4 bg-green-100 border rounded mr-1"></span>U8 = 15m halves</p>
-        <p><span className="inline-block w-4 h-4 bg-yellow-100 border rounded mr-1"></span>U9 = 20m halves</p>
-        <p><span className="inline-block w-4 h-4 bg-blue-100 border rounded mr-1"></span>U10 = 20m halves</p>
-        <p><span className="inline-block w-4 h-4 bg-purple-100 border rounded mr-1"></span>U11 = 20m halves</p>
-        <p><span className="inline-block w-4 h-4 bg-pink-100 border rounded mr-1"></span>U12 = 20m halves</p>
-        <p><span className="inline-block w-4 h-4 bg-red-100 border rounded mr-1"></span>U13 = 25m halves</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {schedule.map((match, idx) => (
-          <Card key={idx}>
-            <CardContent className={"p-4 " + AGE_COLORS[match.age]}>
-              <p className="font-bold">{match.age} | {match.teamA.name} vs {match.teamB.name}</p>
-              <p>{match.field}</p>
-              <p>{format(match.startTime, "HH:mm")} - {format(match.endTime, "HH:mm")}</p>
-            </CardContent>
-          </Card>
-        ))}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
+        {schedule.map((m, i) => {
+          const r = AGE_RULES[m.age];
+          const h = r.halfDuration;
+          const ht = r.halftime;
+          const firstHalfEnd = addMinutes(m.startTime, h);
+          const secondHalfStart = addMinutes(firstHalfEnd, ht);
+          const secondHalfEnd = addMinutes(secondHalfStart, h);
+          return (
+            <div key={i} style={s.card}>
+              <div style={{ fontWeight: 700 }}>
+                {m.age} | {m.teamA.name} vs {m.teamB.name}
+              </div>
+              <div>{m.field}</div>
+              <div>
+                {format(m.startTime, "HH:mm")} – {format(m.endTime, "HH:mm")}
+              </div>
+              <div style={{ fontSize: 12, marginTop: 6, color: "#374151" }}>
+                1st: {format(m.startTime, "HH:mm")}–{format(firstHalfEnd, "HH:mm")} • HT: {format(firstHalfEnd, "HH:mm")}–{format(secondHalfStart, "HH:mm")} • 2nd: {format(secondHalfStart, "HH:mm")}–{format(secondHalfEnd, "HH:mm")}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
