@@ -1,15 +1,17 @@
 # Rugby Hosting Day Scheduler (Next.js)
 
-- Two fields (A & B) with **balanced scheduling**
-- Match durations per age: U8 35m, U9–U12 45m, U13 55m
-- **7 minutes only between matches**
-- Randomized pairings; no same-club pairings
-- **No parallel same-club games** across fields for all ages
-- **Max games per team** (optional cap)
-- Live teams sidebar with add/remove
+- Balanced Field A & B (earliest finish + usage tie-break)
+- 7 minutes **between** matches only
+- No parallel same-club across fields (all ages)
+- Live clubs/teams add & remove
 - CSV export
+- Print to A4 (Field A page 1, Field B page 2), halftime breakdown
 
-## Deploy (Vercel)
-1. Push to GitHub
-2. Import on Vercel
-3. Build: `next build` (defaults)
+## Run locally
+```bash
+npm install
+npm run dev
+```
+
+## Deploy to Vercel
+Push this folder to a GitHub repo and import it in Vercel. Default Next.js settings.
