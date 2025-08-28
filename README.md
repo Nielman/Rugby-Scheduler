@@ -1,19 +1,16 @@
-# Rugby Hosting Day Scheduler
+# Rugby Hosting Day Scheduler (Next.js)
 
-- Balanced Field A & B usage
-- 7m break only **between** matches
-- No parallel same-club across fields (all ages)
-- Per-age **requested games per team**
-- Live teams add/remove
+- Two fields with smart balancing
+- 7 minutes between matches only (not inside match duration)
+- No parallel same-club games across fields (all ages)
+- Randomized age groups and pairings (cross-club only)
+- Live clubs & teams block with add/remove
 - CSV export
-- Print to A4 (Field A then Field B) with logo + host header
-- **Persistence (Only B)**: Save / Load / Clear config (clubs, times, host name, logo) via localStorage
+- Print to A4: one page per field, with logo + host name header and developer footer
 
 ## Run locally
-```
 npm install
 npm run dev
-```
 
 ## Deploy to Vercel
-Push to GitHub → Import in Vercel → Build with default Next.js settings.
+Push to GitHub and import in Vercel (Next.js auto-detected).

@@ -26,7 +26,8 @@ const s = {
   card: { border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, background: "#f9fafb" },
   label: { fontSize: 12, color: "#374151" },
   success: { color: "#16a34a", fontWeight: 600, marginTop: 4, marginBottom: 6 },
-  footer: { marginTop: 12, padding: 10, background: "#f1f5f9", borderRadius: 8, fontSize: 14 }
+  footer: { marginTop: 12, padding: 10, background: "#f1f5f9", borderRadius: 8, fontSize: 14 },
+  devCredit: { marginTop: 6, fontSize: 12, color: "#475569", textAlign: "right" }
 };
 
 export default function Home() {
@@ -40,21 +41,10 @@ export default function Home() {
   const [schedule, setSchedule] = useState([]);
   const [message, setMessage] = useState("");
 
-  // Print header
   const [hostName, setHostName] = useState("Centurion Youth Rugby Club");
   const [logoUrl, setLogoUrl] = useState("");
 
-  // ---- Persistence (Only B) ----
-  const saveConfig = () => {
-    try {
-      const data = { clubs, startTime, endTime, hostName, logoUrl };
-      localStorage.setItem("rugbySchedulerConfig", JSON.stringify(data));
-      setMessage("Config saved");
-      setTimeout(() => setMessage(""), 1500);
-    } catch {}
-  };
-
-  const loadConfig = () => {
+  useEffect(() => {
     try {
       const raw = localStorage.getItem("rugbySchedulerConfig");
       if (!raw) return;
@@ -63,46 +53,14 @@ export default function Home() {
       if (data?.startTime) setStartTime(data.startTime);
       if (data?.endTime) setEndTime(data.endTime);
       if (data?.hostName) setHostName(data.hostName);
-      if (data?.logoUrl !== undefined) setLogoUrl(data.logoUrl);
+      if (data?.logoUrl) setLogoUrl(data.logoUrl);
       setSelectedClub((data?.clubs?.[0]?.name) || "Centurion Youth Rugby Club");
-      setMessage("Config loaded");
-      setTimeout(() => setMessage(""), 1500);
-    } catch {}
-  };
-
-  const clearSaved = () => {
-    try {
-      localStorage.removeItem("rugbySchedulerConfig");
-      setMessage("Saved config cleared");
-      setTimeout(() => setMessage(""), 1500);
-    } catch {}
-  };
-
-  useEffect(() => {
-    // auto-load on first mount (best-effort)
-    try {
-      const raw = localStorage.getItem("rugbySchedulerConfig");
-      if (raw) {
-        const data = JSON.parse(raw);
-        if (data?.clubs) setClubs(data.clubs);
-        if (data?.startTime) setStartTime(data.startTime);
-        if (data?.endTime) setEndTime(data.endTime);
-        if (data?.hostName) setHostName(data.hostName);
-        if (data?.logoUrl !== undefined) setLogoUrl(data.logoUrl);
-        setSelectedClub((data?.clubs?.[0]?.name) || "Centurion Youth Rugby Club");
-      }
     } catch {}
   }, []);
 
-  // ---- helpers ----
-  const normalizeEntry = (raw) => {
-    if (typeof raw === "number") return { count: raw, desired: "" };
-    return { count: Number(raw?.count || 0), desired: raw?.desired ?? "" };
-  };
-
   const matchDuration = (age) => {
     const r = AGE_RULES[age];
-    return r.halves * r.halfDuration + r.halftime; // no 7 here
+    return r.halves * r.halfDuration + r.halftime;
   };
 
   const addClub = () => {
@@ -119,8 +77,7 @@ export default function Home() {
       prev.map((c) => {
         if (c.name !== selectedClub) return c;
         const nt = { ...(c.teams || {}) };
-        const entry = normalizeEntry(nt[selectedAgeGroup]);
-        nt[selectedAgeGroup] = { count: (entry.count || 0) + Number(teamCount), desired: entry.desired };
+        nt[selectedAgeGroup] = (nt[selectedAgeGroup] || 0) + Number(teamCount);
         return { ...c, teams: nt };
       })
     );
@@ -128,21 +85,9 @@ export default function Home() {
     setTimeout(() => setMessage(""), 2000);
   };
 
-  const setDesiredFor = (clubName, age, val) => {
-    setClubs((prev) =>
-      prev.map((c) => {
-        if (c.name !== clubName) return c;
-        const nt = { ...(c.teams || {}) };
-        const entry = normalizeEntry(nt[age]);
-        nt[age] = { count: entry.count, desired: val };
-        return { ...c, teams: nt };
-      })
-    );
-  };
-
   const removeClub = (clubName) => {
     setClubs((prev) => prev.filter((c) => c.name !== clubName));
-    if (selectedClub === clubName) setSelectedClub(clubs[0]?.name || "");
+    if (selectedClub === clubName) setSelectedClub("Centurion Youth Rugby Club");
   };
 
   const removeAgeFromClub = (clubName, age) => {
@@ -156,15 +101,14 @@ export default function Home() {
     );
   };
 
-  // ---- pairing builder ----
   const buildMatches = () => {
     const matches = [];
     AGE_GROUPS.forEach((age) => {
       const allTeams = [];
       clubs.forEach((club) => {
-        const entry = normalizeEntry(club.teams?.[age]);
-        for (let i = 0; i < (entry.count || 0); i++) {
-          allTeams.push({ name: `${club.name} ${age} #${i + 1}`, club: club.name, age, desired: entry.desired });
+        const count = Number(club.teams?.[age] || 0);
+        for (let i = 0; i < count; i++) {
+          allTeams.push({ name: `${club.name} ${age} #${i + 1}`, club: club.name, age });
         }
       });
       for (let i = 0; i < allTeams.length; i++) {
@@ -175,7 +119,6 @@ export default function Home() {
         }
       }
     });
-    // shuffle
     for (let i = matches.length - 1; i > 0; i--) {
       const k = Math.floor(Math.random() * (i + 1));
       [matches[i], matches[k]] = [matches[k], matches[i]];
@@ -183,7 +126,6 @@ export default function Home() {
     return matches;
   };
 
-  // ---- scheduling ----
   const generateSchedule = () => {
     const matches = buildMatches();
     const dayStart = new Date(`1970-01-01T${startTime}:00`);
@@ -191,19 +133,6 @@ export default function Home() {
     const fieldTimes = { "Field A": new Date(dayStart), "Field B": new Date(dayStart) };
     const fieldCounts = { "Field A": 0, "Field B": 0 };
     const out = [];
-    const desiredCap = {}; // per team name -> number (Infinity if blank)
-    const gamesByTeam = {};
-
-    // build desired caps from clubs
-    clubs.forEach((club) => {
-      AGE_GROUPS.forEach((age) => {
-        const entry = normalizeEntry(club.teams?.[age]);
-        const cap = entry.desired === "" ? Infinity : Math.max(0, Number(entry.desired));
-        for (let i = 0; i < (entry.count || 0); i++) {
-          desiredCap[`${club.name} ${age} #${i + 1}`] = cap;
-        }
-      });
-    });
 
     const hasParallelSameClub = (candidateStart, age, clubsToCheck) =>
       out.some(
@@ -214,12 +143,6 @@ export default function Home() {
       );
 
     for (const m of matches) {
-      const tA = m.teamA.name;
-      const tB = m.teamB.name;
-      const capA = desiredCap[tA] ?? Infinity;
-      const capB = desiredCap[tB] ?? Infinity;
-      if ((gamesByTeam[tA] || 0) >= capA || (gamesByTeam[tB] || 0) >= capB) continue;
-
       const candidates = FIELDS.map((f) => {
         const start = new Date(fieldTimes[f]);
         const end = addMinutes(start, m.duration);
@@ -239,16 +162,14 @@ export default function Home() {
       const chosen = valid[0];
 
       out.push({ ...m, field: chosen.field, startTime: chosen.start, endTime: chosen.end });
-      gamesByTeam[tA] = (gamesByTeam[tA] || 0) + 1;
-      gamesByTeam[tB] = (gamesByTeam[tB] || 0) + 1;
-      fieldTimes[chosen.field] = addMinutes(chosen.end, BETWEEN_MATCHES_BREAK);
+
+      fieldTimes[chosen.field] = addMinutes(chosen.end, 7);
       fieldCounts[chosen.field] += 1;
     }
 
     setSchedule(out);
   };
 
-  // ---- export ----
   const exportCSV = () => {
     if (!schedule.length) return;
     const headers = ["Field", "Age Group", "Start Time", "End Time", "Team A", "Team B"];
@@ -272,29 +193,52 @@ export default function Home() {
     return { lastEnd, perField, total: schedule.length };
   }, [schedule]);
 
-  const halfs = (m) => {
-    const r = AGE_RULES[m.age];
-    const h = r.halfDuration, ht = r.halftime;
-    const firstHalfEnd = addMinutes(m.startTime, h);
-    const secondHalfStart = addMinutes(firstHalfEnd, ht);
-    const secondHalfEnd = addMinutes(secondHalfStart, h);
-    return { firstHalfEnd, secondHalfStart, secondHalfEnd };
-  };
-
   return (
     <div style={s.page}>
       <h1 style={s.h1}>Rugby Hosting Day Scheduler</h1>
       {message ? <div style={s.success}>✅ {message}</div> : null}
 
-      {/* Print header settings */}
       <div className="no-print" style={s.card}>
         <div style={s.label}>Print Header</div>
         <div style={s.row}>
-          <input placeholder="Host/Club name" value={hostName} onChange={(e) => setHostName(e.target.value)} style={{ ...s.input, minWidth: 260 }} />
-          <input placeholder="Logo URL (optional)" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} style={{ ...s.input, minWidth: 260 }} />
-          <button onClick={saveConfig} style={s.btnGray}>Save</button>
-          <button onClick={loadConfig} style={s.btnGray}>Load</button>
-          <button onClick={clearSaved} style={s.btnGray}>Clear Saved</button>
+          <input
+            placeholder="Host/Club name for print header"
+            value={hostName}
+            onChange={(e) => setHostName(e.target.value)}
+            style={{ ...s.input, minWidth: 260 }}
+          />
+          <input
+            placeholder="Logo URL (optional, e.g. /logo.png)"
+            value={logoUrl}
+            onChange={(e) => setLogoUrl(e.target.value)}
+            style={{ ...s.input, minWidth: 260 }}
+          />
+          <button onClick={() => {
+            const data = { clubs, startTime, endTime, hostName, logoUrl };
+            localStorage.setItem("rugbySchedulerConfig", JSON.stringify(data));
+            setMessage("Config saved");
+            setTimeout(() => setMessage(""), 1500);
+          }} style={s.btnGray}>Save</button>
+          <button onClick={() => {
+            try {
+              const raw = localStorage.getItem("rugbySchedulerConfig");
+              if (!raw) return;
+              const data = JSON.parse(raw);
+              if (data?.clubs) setClubs(data.clubs);
+              if (data?.startTime) setStartTime(data.startTime);
+              if (data?.endTime) setEndTime(data.endTime);
+              if (data?.hostName) setHostName(data.hostName);
+              if (data?.logoUrl) setLogoUrl(data.logoUrl);
+              setSelectedClub((data?.clubs?.[0]?.name) || "Centurion Youth Rugby Club");
+              setMessage("Config loaded");
+              setTimeout(() => setMessage(""), 1500);
+            } catch {}
+          }} style={s.btnGray}>Load</button>
+          <button onClick={() => {
+            localStorage.removeItem("rugbySchedulerConfig");
+            setMessage("Saved config cleared");
+            setTimeout(() => setMessage(""), 1500);
+          }} style={s.btnGray}>Clear Saved</button>
         </div>
       </div>
 
@@ -318,29 +262,24 @@ export default function Home() {
           </div>
 
           <div style={s.card}>
-            <div style={s.label}>Current Clubs & Teams (requested games per team)</div>
+            <div style={s.label}>Current Clubs & Teams</div>
             <ul style={{ marginTop: 6 }}>
               {clubs.map((club) => (
                 <li key={club.name} style={{ marginTop: 6 }}>
                   <b>{club.name}</b>{" "}
-                  <button onClick={() => removeClub(club.name)} style={{ ...s.btnGray, padding: "2px 8px", marginLeft: 6 }} title="Remove club">Remove Club</button>
+                  {club.name !== "Centurion Youth Rugby Club" && (
+                    <button onClick={() => removeClub(club.name)} style={{ ...s.btnGray, padding: "2px 8px", marginLeft: 6 }} title="Remove club">Remove Club</button>
+                  )}
                   <ul style={{ marginTop: 4, marginLeft: 14 }}>
                     {Object.keys(club.teams || {}).length === 0 ? (
                       <li style={{ color: "#6b7280", fontStyle: "italic" }}>No teams added yet</li>
                     ) : (
-                      Object.entries(club.teams).map(([age, raw]) => {
-                        const entry = normalizeEntry(raw);
-                        return (
-                          <li key={age} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                            <span>{age}: {entry.count} team(s)</span>
-                            <input type="number" min="0" placeholder="requested games / team" value={entry.desired}
-                                   onChange={(e) => setDesiredFor(club.name, age, e.target.value)}
-                                   style={{ ...s.input, width: 190 }} title="Leave blank for unlimited" />
-                            <span style={{ fontSize: 12, color: "#374151" }}>match time: {matchDuration(age)}m</span>
-                            <button onClick={() => removeAgeFromClub(club.name, age)} style={{ ...s.btnGray, padding: "2px 8px" }} title="Remove age group">✕</button>
-                          </li>
-                        );
-                      })
+                      Object.entries(club.teams).map(([age, count]) => (
+                        <li key={age} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span>{age}: {count} team(s) — {matchDuration(age)} min</span>
+                          <button onClick={() => removeAgeFromClub(club.name, age)} style={{ ...s.btnGray, padding: "2px 8px" }} title="Remove this age group from club">✕</button>
+                        </li>
+                      ))
                     )}
                   </ul>
                 </li>
@@ -366,7 +305,7 @@ export default function Home() {
             <ul style={{ marginTop: 6 }}>
               {AGE_GROUPS.map((age) => {
                 const r = AGE_RULES[age];
-                const total = matchDuration(age);
+                const total = r.halves * r.halfDuration + r.halftime;
                 return <li key={age}><b>{age}</b>: {r.halves} × {r.halfDuration}m + {r.halftime}m halftime = <b>{total}m</b></li>;
               })}
             </ul>
@@ -377,7 +316,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* On-screen schedule */}
       <div className="no-print" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
         {schedule.map((m, i) => {
           const r = AGE_RULES[m.age];
@@ -392,14 +330,29 @@ export default function Home() {
               <div>{m.field}</div>
               <div>{format(m.startTime, "HH:mm")} – {format(m.endTime, "HH:mm")}</div>
               <div style={{ fontSize: 12, marginTop: 6, color: "#374151" }}>
-                1st: {format(m.startTime, "HH:mm")}–{format(firstHalfEnd, "HH:mm")} • HT: {format(firstHalfEnd, "HH:mm")}–{format(secondHalfStart, "HH:mm")} • 2nd: {format(secondHalfStart, "HH:mm")}–{format(secondHalfEnd, "HH:mm")}
+                1st: {format(m.startTime, "HH:mm")}–{format(firstHalfEnd, "HH:mm")}
+                {" • "}HT: {format(firstHalfEnd, "HH:mm")}–{format(secondHalfStart, "HH:mm")}
+                {" • "}2nd: {format(secondHalfStart, "HH:mm")}–{format(secondHalfEnd, "HH:mm")}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Print-only pages with logo + host header and field per page */}
+      {useMemo(() => {
+        if (!schedule.length) return null;
+        const lastEnd = schedule.reduce((max, m) => (m.endTime > max ? m.endTime : max), schedule[0].endTime);
+        const counts = FIELDS.map((f) => `${f}: ${schedule.filter((m) => m.field === f).length}`).join(" | ");
+        return (
+          <div className="no-print" style={s.footer}>
+            <div><b>Last match ends:</b> {format(lastEnd, "HH:mm")}</div>
+            <div><b>Total matches:</b> {schedule.length}</div>
+            <div><b>Per field:</b> {counts}</div>
+            <div style={s.devCredit}>Developer N. van Rooyen</div>
+          </div>
+        );
+      }, [schedule])}
+
       <div className="print-only">
         {FIELDS.map((f) => (
           <div key={f} className="page">
@@ -429,23 +382,10 @@ export default function Home() {
                 </div>
               );
             })}
+            <div className="print-footer">Developer N. van Rooyen</div>
           </div>
         ))}
       </div>
-
-      {/* Footer summary (screen only) */}
-      {useMemo(() => {
-        if (!schedule.length) return null;
-        const lastEnd = schedule.reduce((max, m) => (m.endTime > max ? m.endTime : max), schedule[0].endTime);
-        const counts = FIELDS.map((f) => `${f}: ${schedule.filter((m) => m.field === f).length}`).join(" | ");
-        return (
-          <div className="no-print" style={s.footer}>
-            <div><b>Last match ends:</b> {format(lastEnd, "HH:mm")}</div>
-            <div><b>Total matches:</b> {schedule.length}</div>
-            <div><b>Per field:</b> {counts}</div>
-          </div>
-        );
-      }, [schedule])}
     </div>
   );
 }
