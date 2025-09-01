@@ -8,7 +8,11 @@ const AGE_RULES = {
   U10: { halves: 2, halfDuration: 20, halftime: 5 },
   U11: { halves: 2, halfDuration: 20, halftime: 5 },
   U12: { halves: 2, halfDuration: 20, halftime: 5 },
-  U13: { halves: 2, halfDuration: 25, halftime: 5 }
+  U13: { halves: 2, halfDuration: 25, halftime: 5 },
+  U14: { halves: 2, halfDuration: 25, halftime: 5 }, // NEW
+  U15: { halves: 2, halfDuration: 30, halftime: 5 }, // NEW
+  U16: { halves: 2, halfDuration: 30, halftime: 5 }, // NEW
+  U18: { halves: 2, halfDuration: 35, halftime: 5 }  // NEW
 };
 const AGE_GROUPS = Object.keys(AGE_RULES);
 const FIELDS = ["Field A", "Field B"];
@@ -24,7 +28,7 @@ const s = {
   btn: { background: "#2563eb", color: "#fff", border: 0, borderRadius: 6, padding: "8px 12px", cursor: "pointer" },
   btnGreen: { background: "#16a34a", color: "#fff", border: 0, borderRadius: 6, padding: "8px 12px", cursor: "pointer" },
   btnGray: { background: "#6b7280", color: "#fff", border: 0, borderRadius: 6, padding: "8px 12px", cursor: "pointer" },
-  grid2: { display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start" },
+  grid2: { display: "grid", gridTemplateColumns: "1fr 340px", gap: 16, alignItems: "start" },
   card: { border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, background: "#f9fafb" },
   label: { fontSize: 12, color: "#374151" },
   success: { color: "#16a34a", fontWeight: 600, marginTop: 4, marginBottom: 6 },
@@ -48,10 +52,10 @@ export default function Home() {
   const [hostName, setHostName] = useState("Centurion Youth Rugby Club");
   const [logoUrl, setLogoUrl] = useState("");
 
-  /* -------- persistence: load on first render -------- */
+  /* ---------- persistence (load on mount) ---------- */
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("rugbySchedulerConfig");
+      const raw = typeof window !== "undefined" ? localStorage.getItem("rugbySchedulerConfig") : null;
       if (!raw) return;
       const data = JSON.parse(raw);
       if (data?.clubs) setClubs(data.clubs);
@@ -64,10 +68,12 @@ export default function Home() {
   }, []);
 
   const saveConfig = () => {
-    const data = { clubs, startTime, endTime, hostName, logoUrl };
-    localStorage.setItem("rugbySchedulerConfig", JSON.stringify(data));
-    setMessage("Config saved");
-    setTimeout(() => setMessage(""), 1500);
+    try {
+      const data = { clubs, startTime, endTime, hostName, logoUrl };
+      localStorage.setItem("rugbySchedulerConfig", JSON.stringify(data));
+      setMessage("Config saved");
+      setTimeout(() => setMessage(""), 1500);
+    } catch {}
   };
   const loadConfig = () => {
     try {
@@ -85,18 +91,20 @@ export default function Home() {
     } catch {}
   };
   const clearSaved = () => {
-    localStorage.removeItem("rugbySchedulerConfig");
-    setMessage("Saved config cleared");
-    setTimeout(() => setMessage(""), 1500);
+    try {
+      localStorage.removeItem("rugbySchedulerConfig");
+      setMessage("Saved config cleared");
+      setTimeout(() => setMessage(""), 1500);
+    } catch {}
   };
 
-  /* ------------- helpers ------------- */
+  /* -------------------- helpers -------------------- */
   const matchDuration = (age) => {
     const r = AGE_RULES[age];
-    return r.halves * r.halfDuration + r.halftime; // no 7 here
+    return r.halves * r.halfDuration + r.halftime; // only match time
   };
 
-  // input normalize: support old numeric value or object {count, desired}
+  // normalizes team entry to {count, desired}
   const normalizeEntry = (raw) => {
     if (typeof raw === "number") return { count: raw, desired: "" };
     return { count: Number(raw?.count || 0), desired: raw?.desired ?? "" };
@@ -117,7 +125,7 @@ export default function Home() {
         if (c.name !== selectedClub) return c;
         const nt = { ...(c.teams || {}) };
         const entry = normalizeEntry(nt[selectedAgeGroup]);
-        nt[selectedAgeGroup] = { count: (entry.count || 0) + Number(teamCount), desired: entry.desired };
+        nt[selectedAgeGroup] = { count: entry.count + Number(teamCount), desired: entry.desired };
         return { ...c, teams: nt };
       })
     );
@@ -161,18 +169,28 @@ export default function Home() {
       clubs.forEach((club) => {
         const entry = normalizeEntry(club.teams?.[age]);
         for (let i = 0; i < (entry.count || 0); i++) {
-          allTeams.push({ name: `${club.name} ${age} #${i + 1}`, club: club.name, age });
+          allTeams.push({
+            name: `${club.name} ${age} #${i + 1}`,
+            club: club.name,
+            age,
+            desired: entry.desired
+          });
         }
       });
       for (let i = 0; i < allTeams.length; i++) {
         for (let j = i + 1; j < allTeams.length; j++) {
           if (allTeams[i].club !== allTeams[j].club) {
-            matches.push({ age, teamA: allTeams[i], teamB: allTeams[j], duration: matchDuration(age) });
+            matches.push({
+              age,
+              teamA: allTeams[i],
+              teamB: allTeams[j],
+              duration: matchDuration(age)
+            });
           }
         }
       }
     });
-    // shuffle
+    // shuffle to randomize age order too
     for (let i = matches.length - 1; i > 0; i--) {
       const k = Math.floor(Math.random() * (i + 1));
       [matches[i], matches[k]] = [matches[k], matches[i]];
@@ -180,7 +198,7 @@ export default function Home() {
     return matches;
   };
 
-  /* ------------- schedule with field balancing + desired caps ------------- */
+  /* ------------- schedule with balancing + caps ------------- */
   const generateSchedule = () => {
     const matches = buildMatches();
     const dayStart = new Date(`1970-01-01T${startTime}:00`);
@@ -189,7 +207,7 @@ export default function Home() {
     const fieldCounts = { "Field A": 0, "Field B": 0 };
     const out = [];
 
-    // build per-team desired caps
+    // desired caps per team (from clubs.teams[age].desired)
     const desiredCap = {};
     clubs.forEach((club) => {
       AGE_GROUPS.forEach((age) => {
@@ -234,11 +252,11 @@ export default function Home() {
       });
 
       const chosen = valid[0];
-
       out.push({ ...m, field: chosen.field, startTime: chosen.start, endTime: chosen.end });
 
       gamesByTeam[tA] = (gamesByTeam[tA] || 0) + 1;
       gamesByTeam[tB] = (gamesByTeam[tB] || 0) + 1;
+
       fieldTimes[chosen.field] = addMinutes(chosen.end, BETWEEN_MATCHES_BREAK);
       fieldCounts[chosen.field] += 1;
     }
@@ -253,7 +271,7 @@ export default function Home() {
     const rows = schedule.map((m) => [
       m.field, m.age, format(m.startTime, "HH:mm"), format(m.endTime, "HH:mm"), m.teamA.name, m.teamB.name
     ]);
-    const csv = [headers, ...rows].map((r) => r.join(",")).join("\\n");
+    const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -264,14 +282,11 @@ export default function Home() {
   const summary = useMemo(() => {
     if (!schedule.length) return null;
     const lastEnd = schedule.reduce((max, m) => (m.endTime > max ? m.endTime : max), schedule[0].endTime);
-    const perField = FIELDS.reduce((acc, f) => {
-      acc[f] = schedule.filter((m) => m.field === f).length;
-      return acc;
-    }, {});
+    const perField = FIELDS.reduce((acc, f) => { acc[f] = schedule.filter((m) => m.field === f).length; return acc; }, {});
     return { lastEnd, perField, total: schedule.length };
   }, [schedule]);
 
-  /* ------------- half calc ------------- */
+  /* ------------- half breakdown ------------- */
   const halfs = (m) => {
     const r = AGE_RULES[m.age];
     const h = r.halfDuration, ht = r.halftime;
@@ -281,6 +296,7 @@ export default function Home() {
     return { firstHalfEnd, secondHalfStart, secondHalfEnd };
   };
 
+  /* -------------------- UI -------------------- */
   return (
     <div style={s.page}>
       <h1 style={s.h1}>Rugby Hosting Day Scheduler</h1>
@@ -344,15 +360,13 @@ export default function Home() {
               {clubs.map((club) => (
                 <li key={club.name} style={{ marginTop: 6 }}>
                   <b>{club.name}</b>{" "}
-                  {club.name !== "Centurion Youth Rugby Club" && (
-                    <button
-                      onClick={() => removeClub(club.name)}
-                      style={{ ...s.btnGray, padding: "2px 8px", marginLeft: 6 }}
-                      title="Remove club"
-                    >
-                      Remove Club
-                    </button>
-                  )}
+                  <button
+                    onClick={() => removeClub(club.name)}
+                    style={{ ...s.btnGray, padding: "2px 8px", marginLeft: 6 }}
+                    title="Remove club"
+                  >
+                    Remove Club
+                  </button>
                   <ul style={{ marginTop: 4, marginLeft: 14 }}>
                     {Object.keys(club.teams || {}).length === 0 ? (
                       <li style={{ color: "#6b7280", fontStyle: "italic" }}>No teams added yet</li>
@@ -410,9 +424,7 @@ export default function Home() {
               {AGE_GROUPS.map((age) => {
                 const r = AGE_RULES[age];
                 const total = matchDuration(age);
-                return (
-                  <li key={age}><b>{age}</b>: {r.halves} × {r.halfDuration}m + {r.halftime}m halftime = <b>{total}m</b></li>
-                );
+                return (<li key={age}><b>{age}</b>: {r.halves} × {r.halfDuration}m + {r.halftime}m halftime = <b>{total}m</b></li>);
               })}
             </ul>
             <div style={{ marginTop: 6, fontSize: 12, color: "#374151" }}>

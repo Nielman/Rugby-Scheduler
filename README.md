@@ -1,15 +1,23 @@
-# Rugby Hosting Day Scheduler
+# Rugby Hosting Day Scheduler (Next.js)
 
-- Balanced use of Field A & B
-- 7 minutes only _between_ matches
-- No parallel same-club games at the same start time (all ages)
-- Per-age **requested games per team** (set in the club list)
-- Print header (host + logo) and footer credit (Developer N. van Rooyen)
-- A4 print pages: Field A on page 1, Field B on page 2
+- Two fields (A & B), balanced to finish earliest.
+- 7 minutes **between** matches only.
+- No parallel same-club games across fields at the same start time (for all ages).
+- Ages: U8–U13 + **U14, U15, U16, U18** with correct half durations and 5m halftime.
+- Add/remove clubs and teams, set **requested games per team** (blank = unlimited).
+- Randomized age groups and pairings.
+- CSV export.
+- Print to A4 (Field A page then Field B) with logo + host header and footer credit.
 
 ## Run
+```
 npm install
 npm run dev
+```
+Open http://localhost:3000
 
 ## Deploy (Vercel)
-Push to GitHub and import in Vercel.
+Push to GitHub → Import in Vercel → default build (`next build`).
+
+## Logo
+Add `public/logo.png` and enter `/logo.png` as Logo URL (or any HTTPS URL).
