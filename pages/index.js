@@ -6,14 +6,14 @@ import { addMinutes, format } from "date-fns";
 const BASE_RULES = {
   U8:  { halves: 2, halfDuration: 15, halftime: 5 },
   U9:  { halves: 2, halfDuration: 20, halftime: 5 },
-  U10:{ halves: 2, halfDuration: 20, halftime: 5 },
-  U11:{ halves: 2, halfDuration: 20, halftime: 5 },
-  U12:{ halves: 2, halfDuration: 20, halftime: 5 },
-  U13:{ halves: 2, halfDuration: 25, halftime: 5 },
-  U14:{ halves: 2, halfDuration: 25, halftime: 5 },
-  U15:{ halves: 2, halfDuration: 30, halftime: 5 },
-  U16:{ halves: 2, halfDuration: 30, halftime: 5 },
-  U18:{ halves: 2, halfDuration: 35, halftime: 5 }
+  U10: { halves: 2, halfDuration: 20, halftime: 5 },
+  U11: { halves: 2, halfDuration: 20, halftime: 5 },
+  U12: { halves: 2, halfDuration: 20, halftime: 5 },
+  U13: { halves: 2, halfDuration: 25, halftime: 5 },
+  U14: { halves: 2, halfDuration: 25, halftime: 5 },
+  U15: { halves: 2, halfDuration: 30, halftime: 5 },
+  U16: { halves: 2, halfDuration: 30, halftime: 5 },
+  U18: { halves: 2, halfDuration: 35, halftime: 5 }
 };
 const FIELDS = ["Field A", "Field B"];
 const BETWEEN_MATCHES_BREAK = 7;
@@ -111,7 +111,7 @@ export default function Home() {
     setMessage("Saved config cleared"); setTimeout(() => setMessage(""), 1500);
   };
 
-  // ---------- clubs/teams & desired caps ----------
+  // ---------- clubs/teams & desired caps (and per-team caps) ----------
   const normalizeEntry = (raw) => {
     if (typeof raw === "number") return { count: raw, desired: "", caps: "" };
     return { count: Number(raw?.count || 0), desired: raw?.desired ?? "", caps: raw?.caps ?? "" };
@@ -139,6 +139,16 @@ export default function Home() {
         return { ...c, teams: nt };
       })
     );
+  };
+
+  const parseCaps = (capsStr) => {
+    if (!capsStr && capsStr !== 0) return [];
+    return String(capsStr)
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0)
+      .map((t) => (t === "" ? null : Number(t)))
+      .map((n) => (Number.isFinite(n) ? n : null));
   };
 
   const matchDuration = (age) => {
@@ -194,7 +204,7 @@ export default function Home() {
       clubs.forEach((club) => {
         const entry = normalizeEntry(club.teams?.[age]);
         for (let i = 0; i < (entry.count || 0); i++) {
-          allTeams.push({ name: `${club.name} ${age} #${i + 1}`, club: club.name, age, index: i });
+          allTeams.push({ name: `${club.name} ${age} #${i + 1}`, club: club.name, age });
         }
       });
       for (let i = 0; i < allTeams.length; i++) {
@@ -225,20 +235,16 @@ export default function Home() {
   const generateSchedule = () => {
     const matches = buildMatches();
 
-    // build per-team desired caps with per-team overrides
+    // build per-team desired caps (from default desired and per-team caps list)
     const desiredCap = {};
     clubs.forEach((club) => {
       Object.keys(ageRules).forEach((age) => {
         const entry = normalizeEntry(club.teams?.[age]);
         const defaultDesired = entry.desired === "" ? Infinity : Math.max(0, Number(entry.desired));
-        const capsArr = String(entry.caps || "")
-          .split(",")
-          .map(s => s.trim())
-          .filter(s => s.length > 0)
-          .map(s => Number(s));
+        const capsList = parseCaps(entry.caps);
         for (let i = 0; i < (entry.count || 0); i++) {
-          const override = Number.isFinite(capsArr[i]) ? Math.max(0, capsArr[i]) : defaultDesired;
-          desiredCap[`${club.name} ${age} #${i + 1}`] = override;
+          const specific = i < capsList.length && capsList[i] != null ? Math.max(0, Number(capsList[i])) : null;
+          desiredCap[`${club.name} ${age} #${i + 1}`] = specific != null ? specific : defaultDesired;
         }
       });
     });
@@ -287,7 +293,7 @@ export default function Home() {
     setWarnings(validateConflicts(out));
   };
 
-  // ---------- export XLSX (per field) ----------
+  // ---------- export XLSX (per field) using SheetJS (no logo) ----------
   const exportXLSX = async () => {
     if (!schedule.length) return;
     const XLSX = await import("xlsx");
@@ -306,6 +312,117 @@ export default function Home() {
       XLSX.utils.book_append_sheet(wb, ws, f.replace(" ", "_"));
     }
     XLSX.writeFile(wb, "match_schedule.xlsx");
+  };
+
+  // ---------- export XLSX with LOGO using ExcelJS ----------
+  const exportXLSXWithLogo = async () => {
+    if (!schedule.length) return;
+
+    let ExcelJS;
+    try {
+      ExcelJS = (await import("exceljs")).default;
+    } catch (e) {
+      alert("ExcelJS failed to load. Falling back to standard export.");
+      return exportXLSX();
+    }
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = hostName || "Scheduler";
+    wb.created = new Date();
+
+    // try to fetch logo as base64
+    const fetchAsBase64 = async (url) => {
+      if (!url) return null;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        const reader = new FileReader();
+        const p = new Promise((resolve) => {
+          reader.onload = () => resolve(reader.result);
+        });
+        reader.readAsDataURL(blob);
+        const dataUrl = await p; // e.g. data:image/png;base64,xxxxx
+        const [, meta, b64] = String(dataUrl).match(/^data:(.+);base64,(.*)$/) || [];
+        if (!b64) return null;
+        let ext = "png";
+        if (meta && meta.includes("jpeg")) ext = "jpeg";
+        if (meta && meta.includes("jpg")) ext = "jpeg";
+        if (meta && meta.includes("png")) ext = "png";
+        return { base64: b64, extension: ext };
+      } catch {
+        return null;
+      }
+    };
+
+    const logo = await fetchAsBase64(logoUrl);
+    const headers = ["Field", "Age Group", "Start Time", "End Time", "Team A", "Team B"];
+
+    for (const f of FIELDS) {
+      const ws = wb.addWorksheet(f.replace(" ", "_"));
+      // column widths
+      ws.columns = [
+        { header: "Field", key: "field", width: 12 },
+        { header: "Age Group", key: "age", width: 12 },
+        { header: "Start Time", key: "start", width: 12 },
+        { header: "End Time", key: "end", width: 12 },
+        { header: "Team A", key: "a", width: 40 },
+        { header: "Team B", key: "b", width: 40 }
+      ];
+
+      let startRow = 1;
+      if (logo) {
+        const imageId = wb.addImage({ base64: logo.base64, extension: logo.extension });
+        // place at top-left
+        ws.addImage(imageId, {
+          tl: { col: 0, row: 0 },
+          ext: { width: 220, height: 60 }
+        });
+        startRow = 5; // leave space under logo
+      }
+
+      // Title with host and field
+      ws.mergeCells(startRow, 1, startRow, 6);
+      const titleCell = ws.getCell(startRow, 1);
+      titleCell.value = `${hostName || ""} — ${f}`.trim();
+      titleCell.font = { bold: true, size: 14 };
+      startRow += 2;
+
+      // headers
+      ws.getRow(startRow).values = headers;
+      ws.getRow(startRow).font = { bold: true };
+      startRow++;
+
+      // data rows
+      const rows = schedule
+        .filter((m) => m.field === f)
+        .sort((a, b) => a.startTime - b.startTime)
+        .map((m) => [m.field, m.age, format(m.startTime, "HH:mm"), format(m.endTime, "HH:mm"), m.teamA.name, m.teamB.name]);
+
+      rows.forEach((r, i) => {
+        ws.getRow(startRow + i).values = r;
+      });
+      // thin borders for readability
+      const lastRow = startRow + rows.length - 1;
+      for (let r = startRow - 1; r <= lastRow; r++) {
+        for (let c = 1; c <= 6; c++) {
+          ws.getCell(r, c).border = {
+            top: { style: "thin", color: { argb: "FFDDE3E8" } },
+            bottom: { style: "thin", color: { argb: "FFDDE3E8" } },
+            left: { style: "thin", color: { argb: "FFDDE3E8" } },
+            right: { style: "thin", color: { argb: "FFDDE3E8" } }
+          };
+        }
+      }
+    }
+
+    // download
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "match_schedule_with_logo.xlsx";
+    a.click();
   };
 
   // ---------- swap & recompute ----------
@@ -419,7 +536,7 @@ export default function Home() {
 
           {/* Clubs & Teams with per-team requested games */}
           <div style={s.card}>
-            <div style={s.label}>Current Clubs & Teams (set requested games / team or per-team caps)</div>
+            <div style={s.label}>Current Clubs & Teams (set requested games / team and per-team caps)</div>
             <ul style={{ marginTop: 6 }}>
               {clubs.map((club) => (
                 <li key={club.name} style={{ marginTop: 6 }}>
@@ -435,23 +552,22 @@ export default function Home() {
                         const entry = normalizeEntry(raw);
                         const total = matchDuration(age);
                         return (
-                          <li key={age} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                          <li key={age} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                             <span>{age}: {entry.count} team(s)</span>
                             <input
                               type="number" min="0"
                               placeholder="requested games / team"
                               value={entry.desired}
                               onChange={(e) => setDesiredFor(club.name, age, e.target.value)}
-                              style={{ ...s.input, width: 180 }}
+                              style={{ ...s.input, width: 190 }}
                               title="Blank = unlimited; 0 = exclude"
                             />
                             <input
-                              type="text"
-                              placeholder="Per-team caps e.g. 2,1,1"
+                              placeholder="Per-team caps (e.g. 2,1,1)"
                               value={entry.caps}
                               onChange={(e) => setCapsFor(club.name, age, e.target.value)}
                               style={{ ...s.input, width: 220 }}
-                              title="Comma-separated caps per team index; blank item uses default cap"
+                              title="Comma-separated caps by team index; missing = use default"
                             />
                             <span style={{ fontSize: 12, color: "#374151" }}>match time: {total}m</span>
                             <button onClick={() => removeAgeFromClub(club.name, age)} style={{ ...s.btnGray, padding: "2px 8px" }}>✕</button>
@@ -473,6 +589,7 @@ export default function Home() {
               <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={s.input} />
               <button onClick={generateSchedule} style={s.btn}>Generate Schedule</button>
               <button onClick={exportXLSX} style={s.btnGray}>Export Excel (XLSX)</button>
+              <button onClick={exportXLSXWithLogo} style={s.btnGray}>Export Excel (Logo)</button>
               {schedule.length > 0 ? <span style={{ fontSize: 12, color: "#065f46" }}>Total Matches: {schedule.length}</span> : null}
             </div>
           </div>
