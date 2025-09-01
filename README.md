@@ -1,20 +1,17 @@
-# Rugby Hosting Day Scheduler — XLSX Export
+# Rugby Hosting Scheduler (Per-team caps)
 
-- Export **Excel (.xlsx)** with two sheets: **Field_A** and **Field_B**.
-- Swap matches by position on a field; recomputes times.
-- Editable age rules per age group; recompute times in place.
-- Constraints kept: U14–U18 start after 13:00; U13–U18 on Field A.
-- 7 minutes **between** matches only; no parallel same-club at same minute.
+- Next.js single-page app
+- XLSX export per field
+- Swap matches on a field by positions
+- Editable age rules
+- Per-team requested games via comma-separated caps list per age (e.g., `2,1,1`)
+- Constraints: U14–U18 only after 13:00; U13–U18 must be on Field A
+- 7 minutes break between matches
+- No parallel same-club at same time within the same age
+- Print pages (A4) with logo + host, and footer credit
 
-## Run
+## Dev
 ```
 npm install
 npm run dev
 ```
-
-## Deploy (Vercel)
-Push to GitHub → Import in Vercel (Next.js).
-
-## Notes
-- Excel export is **client-side** using `xlsx`. No server setup required.
-- If you add `public/logo.png`, use `/logo.png` in the Logo URL field.

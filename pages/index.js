@@ -6,21 +6,21 @@ import { addMinutes, format } from "date-fns";
 const BASE_RULES = {
   U8:  { halves: 2, halfDuration: 15, halftime: 5 },
   U9:  { halves: 2, halfDuration: 20, halftime: 5 },
-  U10: { halves: 2, halfDuration: 20, halftime: 5 },
-  U11: { halves: 2, halfDuration: 20, halftime: 5 },
-  U12: { halves: 2, halfDuration: 20, halftime: 5 },
-  U13: { halves: 2, halfDuration: 25, halftime: 5 },
-  U14: { halves: 2, halfDuration: 25, halftime: 5 },
-  U15: { halves: 2, halfDuration: 30, halftime: 5 },
-  U16: { halves: 2, halfDuration: 30, halftime: 5 },
-  U18: { halves: 2, halfDuration: 35, halftime: 5 }
+  U10:{ halves: 2, halfDuration: 20, halftime: 5 },
+  U11:{ halves: 2, halfDuration: 20, halftime: 5 },
+  U12:{ halves: 2, halfDuration: 20, halftime: 5 },
+  U13:{ halves: 2, halfDuration: 25, halftime: 5 },
+  U14:{ halves: 2, halfDuration: 25, halftime: 5 },
+  U15:{ halves: 2, halfDuration: 30, halftime: 5 },
+  U16:{ halves: 2, halfDuration: 30, halftime: 5 },
+  U18:{ halves: 2, halfDuration: 35, halftime: 5 }
 };
 const FIELDS = ["Field A", "Field B"];
 const BETWEEN_MATCHES_BREAK = 7;
 
-// Constraints:
-const AFTERNOON_ONLY = new Set(["U14","U15","U16","U18"]); // earliest 13:00
-const AGES_A_ONLY    = new Set(["U13","U14","U15","U16","U18"]); // A-field only
+// Constraints: U14–U18 only after 13:00; U13–U18 must be on Field A
+const AFTERNOON_ONLY = new Set(["U14","U15","U16","U18"]);
+const AGES_A_ONLY    = new Set(["U13","U14","U15","U16","U18"]);
 const AFTERNOON_START_STR = "13:00";
 
 /* -------------------- STYLES -------------------- */
@@ -48,7 +48,7 @@ const s = {
 
 /* -------------------- COMPONENT -------------------- */
 export default function Home() {
-  const [ageRules, setAgeRules] = useState(BASE_RULES); // editable rules
+  const [ageRules, setAgeRules] = useState(BASE_RULES);
   const AGE_GROUPS = useMemo(() => Object.keys(ageRules), [ageRules]);
 
   const [clubs, setClubs] = useState([{ name: "Centurion Youth Rugby Club", teams: {} }]);
@@ -64,13 +64,13 @@ export default function Home() {
   const [hostName, setHostName] = useState("Centurion Youth Rugby Club");
   const [logoUrl, setLogoUrl] = useState("");
 
-  // Swap UI
+  // swap UI + warnings
   const [swapField, setSwapField] = useState("Field A");
   const [swapA, setSwapA] = useState("");
   const [swapB, setSwapB] = useState("");
   const [warnings, setWarnings] = useState([]);
 
-  // Load saved config
+  // ---------- persistence ----------
   useEffect(() => {
     try {
       const raw = localStorage.getItem("rugbySchedulerConfig");
@@ -89,8 +89,7 @@ export default function Home() {
   const saveConfig = () => {
     const data = { clubs, startTime, endTime, hostName, logoUrl, ageRules };
     localStorage.setItem("rugbySchedulerConfig", JSON.stringify(data));
-    setMessage("Config saved");
-    setTimeout(() => setMessage(""), 1500);
+    setMessage("Config saved"); setTimeout(() => setMessage(""), 1500);
   };
   const loadConfig = () => {
     try {
@@ -104,14 +103,42 @@ export default function Home() {
       if (data?.logoUrl) setLogoUrl(data.logoUrl);
       if (data?.ageRules) setAgeRules(data.ageRules);
       setSelectedClub((data?.clubs?.[0]?.name) || "Centurion Youth Rugby Club");
-      setMessage("Config loaded");
-      setTimeout(() => setMessage(""), 1500);
+      setMessage("Config loaded"); setTimeout(() => setMessage(""), 1500);
     } catch {}
   };
   const clearSaved = () => {
     localStorage.removeItem("rugbySchedulerConfig");
-    setMessage("Saved config cleared");
-    setTimeout(() => setMessage(""), 1500);
+    setMessage("Saved config cleared"); setTimeout(() => setMessage(""), 1500);
+  };
+
+  // ---------- clubs/teams & desired caps ----------
+  const normalizeEntry = (raw) => {
+    if (typeof raw === "number") return { count: raw, desired: "", caps: "" };
+    return { count: Number(raw?.count || 0), desired: raw?.desired ?? "", caps: raw?.caps ?? "" };
+  };
+
+  const setDesiredFor = (clubName, age, desired) => {
+    setClubs((prev) =>
+      prev.map((c) => {
+        if (c.name !== clubName) return c;
+        const nt = { ...(c.teams || {}) };
+        const entry = normalizeEntry(nt[age] || { count: 0, desired: "", caps: "" });
+        nt[age] = { count: entry.count, desired, caps: entry.caps };
+        return { ...c, teams: nt };
+      })
+    );
+  };
+
+  const setCapsFor = (clubName, age, caps) => {
+    setClubs((prev) =>
+      prev.map((c) => {
+        if (c.name !== clubName) return c;
+        const nt = { ...(c.teams || {}) };
+        const entry = normalizeEntry(nt[age] || { count: 0, desired: "", caps: "" });
+        nt[age] = { count: entry.count, desired: entry.desired, caps };
+        return { ...c, teams: nt };
+      })
+    );
   };
 
   const matchDuration = (age) => {
@@ -133,7 +160,9 @@ export default function Home() {
       prev.map((c) => {
         if (c.name !== selectedClub) return c;
         const nt = { ...(c.teams || {}) };
-        nt[selectedAgeGroup] = (nt[selectedAgeGroup] || 0) + Number(teamCount);
+        const current = nt[selectedAgeGroup];
+        const entry = normalizeEntry(current || { count: 0, desired: "", caps: "" });
+        nt[selectedAgeGroup] = { count: entry.count + Number(teamCount), desired: entry.desired, caps: entry.caps };
         return { ...c, teams: nt };
       })
     );
@@ -157,15 +186,15 @@ export default function Home() {
     );
   };
 
-  // Build pairings and shuffle
+  // ---------- build pairings ----------
   const buildMatches = () => {
     const matches = [];
     Object.keys(ageRules).forEach((age) => {
       const allTeams = [];
       clubs.forEach((club) => {
-        const count = Number(club.teams?.[age] || 0);
-        for (let i = 0; i < count; i++) {
-          allTeams.push({ name: `${club.name} ${age} #${i + 1}`, club: club.name, age });
+        const entry = normalizeEntry(club.teams?.[age]);
+        for (let i = 0; i < (entry.count || 0); i++) {
+          allTeams.push({ name: `${club.name} ${age} #${i + 1}`, club: club.name, age, index: i });
         }
       });
       for (let i = 0; i < allTeams.length; i++) {
@@ -183,6 +212,7 @@ export default function Home() {
     return matches;
   };
 
+  // helper: clash same age + same hh:mm + overlapping club
   const conflictAt = (list, candidateStart, age, clubsToCheck) =>
     list.some(
       (x) =>
@@ -191,8 +221,29 @@ export default function Home() {
         (clubsToCheck.includes(x.teamA.club) || clubsToCheck.includes(x.teamB.club))
     );
 
+  // ---------- generate schedule (with caps + constraints) ----------
   const generateSchedule = () => {
     const matches = buildMatches();
+
+    // build per-team desired caps with per-team overrides
+    const desiredCap = {};
+    clubs.forEach((club) => {
+      Object.keys(ageRules).forEach((age) => {
+        const entry = normalizeEntry(club.teams?.[age]);
+        const defaultDesired = entry.desired === "" ? Infinity : Math.max(0, Number(entry.desired));
+        const capsArr = String(entry.caps || "")
+          .split(",")
+          .map(s => s.trim())
+          .filter(s => s.length > 0)
+          .map(s => Number(s));
+        for (let i = 0; i < (entry.count || 0); i++) {
+          const override = Number.isFinite(capsArr[i]) ? Math.max(0, capsArr[i]) : defaultDesired;
+          desiredCap[`${club.name} ${age} #${i + 1}`] = override;
+        }
+      });
+    });
+    const gamesByTeam = {};
+
     const dayStart = new Date(`1970-01-01T${startTime}:00`);
     const dayEnd = new Date(`1970-01-01T${endTime}:00`);
     const afternoonStart = new Date(`1970-01-01T${AFTERNOON_START_STR}:00`);
@@ -200,7 +251,14 @@ export default function Home() {
     const out = [];
 
     for (const m of matches) {
+      const tA = m.teamA.name;
+      const tB = m.teamB.name;
+      const capA = desiredCap[tA] ?? Infinity;
+      const capB = desiredCap[tB] ?? Infinity;
+      if ((gamesByTeam[tA] || 0) >= capA || (gamesByTeam[tB] || 0) >= capB) continue;
+
       const fieldsForAge = AGES_A_ONLY.has(m.age) ? ["Field A"] : FIELDS;
+
       const candidates = fieldsForAge.map((f) => {
         let start = new Date(fieldTimes[f]);
         if (AFTERNOON_ONLY.has(m.age) && start < afternoonStart) start = new Date(afternoonStart);
@@ -212,18 +270,59 @@ export default function Home() {
 
       const valid = candidates.filter((c) => c.fits);
       if (!valid.length) continue;
-      valid.sort((a, b) => (a.end.getTime() !== b.end.getTime() ? a.end - b.end : 0));
+
+      valid.sort((a, b) => a.end - b.end);
       const chosen = valid[0];
 
       out.push({ ...m, field: chosen.field, startTime: chosen.start, endTime: chosen.end });
 
-      const nextStart = addMinutes(chosen.end, BETWEEN_MATCHES_BREAK);
-      fieldTimes[chosen.field] = nextStart;
+      gamesByTeam[tA] = (gamesByTeam[tA] || 0) + 1;
+      gamesByTeam[tB] = (gamesByTeam[tB] || 0) + 1;
+
+      fieldTimes[chosen.field] = addMinutes(chosen.end, BETWEEN_MATCHES_BREAK);
     }
 
     out.sort((a, b) => a.startTime - b.startTime || a.field.localeCompare(b.field));
     setSchedule(out);
     setWarnings(validateConflicts(out));
+  };
+
+  // ---------- export XLSX (per field) ----------
+  const exportXLSX = async () => {
+    if (!schedule.length) return;
+    const XLSX = await import("xlsx");
+    const headers = ["Field", "Age Group", "Start Time", "End Time", "Team A", "Team B"];
+
+    const wb = XLSX.utils.book_new();
+    for (const f of FIELDS) {
+      const rows = schedule
+        .filter((m) => m.field === f)
+        .sort((a, b) => a.startTime - b.startTime)
+        .map((m) => [
+          m.field, m.age, format(m.startTime, "HH:mm"), format(m.endTime, "HH:mm"), m.teamA.name, m.teamB.name
+        ]);
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws["!cols"] = [{ wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 40 }, { wch: 40 }];
+      XLSX.utils.book_append_sheet(wb, ws, f.replace(" ", "_"));
+    }
+    XLSX.writeFile(wb, "match_schedule.xlsx");
+  };
+
+  // ---------- swap & recompute ----------
+  const fieldList = (field) => schedule.filter((m) => m.field === field).sort((a, b) => a.startTime - b.startTime);
+
+  const recomputeFieldTimes = (listForField, dayStart, dayEnd) => {
+    const afternoonStart = new Date(`1970-01-01T${AFTERNOON_START_STR}:00`);
+    let t = new Date(dayStart);
+    const recomputed = [];
+    for (const m of listForField) {
+      if (AFTERNOON_ONLY.has(m.age) && t < afternoonStart) t = new Date(afternoonStart);
+      const start = new Date(t);
+      const end = addMinutes(start, matchDuration(m.age));
+      recomputed.push({ ...m, startTime: start, endTime: end });
+      t = addMinutes(end, BETWEEN_MATCHES_BREAK);
+    }
+    return recomputed;
   };
 
   const validateConflicts = (all) => {
@@ -240,81 +339,47 @@ export default function Home() {
       }
     }
     all.forEach((m) => {
-      if (AGES_A_ONLY.has(m.age) && m.field !== "Field A") {
-        msgs.push(`${m.age} must be on Field A (found on ${m.field}).`);
-      }
-      if (AFTERNOON_ONLY.has(m.age) && format(m.startTime, "HH:mm") < AFTERNOON_START_STR) {
+      if (AGES_A_ONLY.has(m.age) && m.field !== "Field A") msgs.push(`${m.age} must be on Field A (found on ${m.field}).`);
+      if (AFTERNOON_ONLY.has(m.age) && format(m.startTime, "HH:mm") < AFTERNOON_START_STR)
         msgs.push(`${m.age} cannot start before ${AFTERNOON_START_STR} (found ${format(m.startTime, "HH:mm")}).`);
-      }
     });
     return Array.from(new Set(msgs));
-  };
-
-  // ----- Swap and recompute (per-field) -----
-  const fieldList = (field) =>
-    schedule.filter((m) => m.field === field).sort((a, b) => a.startTime - b.startTime);
-
-  const recomputeFieldTimes = (listForField, dayStart, dayEnd) => {
-    const afternoonStart = new Date(`1970-01-01T${AFTERNOON_START_STR}:00`);
-    let t = new Date(dayStart);
-    const recomputed = [];
-    for (const m of listForField) {
-      if (AFTERNOON_ONLY.has(m.age) && t < afternoonStart) t = new Date(afternoonStart);
-      const start = new Date(t);
-      const end = addMinutes(start, matchDuration(m.age));
-      recomputed.push({ ...m, startTime: start, endTime: end });
-      t = addMinutes(end, BETWEEN_MATCHES_BREAK);
-    }
-    return recomputed;
   };
 
   const swapOnField = () => {
     const a = parseInt(swapA, 10);
     const b = parseInt(swapB, 10);
     if (!a || !b || a === b) return;
+
     const dayStart = new Date(`1970-01-01T${startTime}:00`);
     const dayEnd = new Date(`1970-01-01T${endTime}:00`);
+
     const list = fieldList(swapField);
     if (a < 1 || a > list.length || b < 1 || b > list.length) return;
+
     const swapped = [...list];
     [swapped[a - 1], swapped[b - 1]] = [swapped[b - 1], swapped[a - 1]];
     const recomputed = recomputeFieldTimes(swapped, dayStart, dayEnd);
+
     const others = schedule.filter((m) => m.field !== swapField);
     const merged = [...others, ...recomputed].sort((x, y) => x.startTime - y.startTime || x.field.localeCompare(y.field));
     setSchedule(merged);
     setWarnings(validateConflicts(merged));
-    setMessage(`Swapped ${swapField} game ${a} with ${b}`);
-    setTimeout(() => setMessage(""), 1500);
+    setMessage(`Swapped ${swapField} game ${a} with ${b}`); setTimeout(() => setMessage(""), 1500);
   };
 
-  // ---------- Export XLSX (two sheets: Field A & Field B) ----------
-  const exportXLSX = async () => {
-    if (!schedule.length) return;
-    const XLSX = await import("xlsx"); // dynamic to avoid SSR issues
-    const headers = ["Field", "Age Group", "Start Time", "End Time", "Team A", "Team B"];
-
-    const wb = XLSX.utils.book_new();
-    for (const f of FIELDS) {
-      const rows = schedule
-        .filter((m) => m.field === f)
-        .sort((a, b) => a.startTime - b.startTime)
-        .map((m) => [
-          m.field,
-          m.age,
-          format(m.startTime, "HH:mm"),
-          format(m.endTime, "HH:mm"),
-          m.teamA.name,
-          m.teamB.name
-        ]);
-      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-      ws["!cols"] = [{ wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 40 }, { wch: 40 }];
-      XLSX.utils.book_append_sheet(wb, ws, f.replace(" ", "_"));
-    }
-    XLSX.writeFile(wb, "match_schedule.xlsx");
+  const applyRulesAndRecompute = () => {
+    const dayStart = new Date(`1970-01-01T${startTime}:00`);
+    const dayEnd = new Date(`1970-01-01T${endTime}:00`);
+    const out = [];
+    for (const f of FIELDS) out.push(...recomputeFieldTimes(fieldList(f), dayStart, dayEnd));
+    out.sort((a, b) => a.startTime - b.startTime || a.field.localeCompare(b.field));
+    setSchedule(out);
+    setWarnings(validateConflicts(out));
+    setMessage("Applied age-rule changes & recomputed times"); setTimeout(() => setMessage(""), 1500);
   };
 
   /* -------------------- UI -------------------- */
-
   return (
     <div style={s.page}>
       <h1 style={s.h1}>Rugby Hosting Day Scheduler</h1>
@@ -335,7 +400,7 @@ export default function Home() {
 
       <div className="no-print" style={s.grid2}>
         <div>
-          {/* Clubs/Teams add */}
+          {/* Add clubs/teams */}
           <div style={s.row}>
             <input placeholder="New Club Name" value={newClubName} onChange={(e) => setNewClubName(e.target.value)} style={s.input} />
             <button onClick={addClub} style={s.btn}>Add Club</button>
@@ -352,9 +417,9 @@ export default function Home() {
             <button onClick={addTeamToClub} style={s.btnGreen}>Add Teams</button>
           </div>
 
-          {/* Current clubs & teams */}
+          {/* Clubs & Teams with per-team requested games */}
           <div style={s.card}>
-            <div style={s.label}>Current Clubs & Teams</div>
+            <div style={s.label}>Current Clubs & Teams (set requested games / team or per-team caps)</div>
             <ul style={{ marginTop: 6 }}>
               {clubs.map((club) => (
                 <li key={club.name} style={{ marginTop: 6 }}>
@@ -366,12 +431,33 @@ export default function Home() {
                     {Object.keys(club.teams || {}).length === 0 ? (
                       <li style={{ color: "#6b7280", fontStyle: "italic" }}>No teams added yet</li>
                     ) : (
-                      Object.entries(club.teams).map(([age, count]) => (
-                        <li key={age} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span>{age}: {count} team(s) — {matchDuration(age)} min</span>
-                          <button onClick={() => removeAgeFromClub(club.name, age)} style={{ ...s.btnGray, padding: "2px 8px" }}>✕</button>
-                        </li>
-                      ))
+                      Object.entries(club.teams).map(([age, raw]) => {
+                        const entry = normalizeEntry(raw);
+                        const total = matchDuration(age);
+                        return (
+                          <li key={age} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                            <span>{age}: {entry.count} team(s)</span>
+                            <input
+                              type="number" min="0"
+                              placeholder="requested games / team"
+                              value={entry.desired}
+                              onChange={(e) => setDesiredFor(club.name, age, e.target.value)}
+                              style={{ ...s.input, width: 180 }}
+                              title="Blank = unlimited; 0 = exclude"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Per-team caps e.g. 2,1,1"
+                              value={entry.caps}
+                              onChange={(e) => setCapsFor(club.name, age, e.target.value)}
+                              style={{ ...s.input, width: 220 }}
+                              title="Comma-separated caps per team index; blank item uses default cap"
+                            />
+                            <span style={{ fontSize: 12, color: "#374151" }}>match time: {total}m</span>
+                            <button onClick={() => removeAgeFromClub(club.name, age)} style={{ ...s.btnGray, padding: "2px 8px" }}>✕</button>
+                          </li>
+                        );
+                      })
                     )}
                   </ul>
                 </li>
@@ -379,7 +465,7 @@ export default function Home() {
             </ul>
           </div>
 
-          {/* Match day window & actions */}
+          {/* Window + actions */}
           <div style={s.card}>
             <div style={s.label}>Match Day Window</div>
             <div style={{ ...s.row, marginTop: 6 }}>
@@ -391,9 +477,9 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Swap matches on a field */}
+          {/* Swap */}
           <div style={s.card}>
-            <div style={s.label}>Swap Matches on a Field (recomputes that field’s times)</div>
+            <div style={s.label}>Swap Matches on a Field (recomputes that field)</div>
             <div style={s.row}>
               <select value={swapField} onChange={(e) => setSwapField(e.target.value)} style={s.select}>
                 {FIELDS.map((f) => <option key={f}>{f}</option>)}
@@ -402,15 +488,10 @@ export default function Home() {
               <input type="number" min="1" placeholder="Pos B" value={swapB} onChange={(e) => setSwapB(e.target.value)} style={s.number} />
               <button onClick={swapOnField} style={s.btn}>Swap</button>
             </div>
-
-            {/* Field order preview */}
             <table style={s.table}>
               <thead>
                 <tr>
-                  <th style={s.th}>#</th>
-                  <th style={s.th}>Time</th>
-                  <th style={s.th}>Age</th>
-                  <th style={s.th}>Teams</th>
+                  <th style={s.th}>#</th><th style={s.th}>Time</th><th style={s.th}>Age</th><th style={s.th}>Teams</th>
                 </tr>
               </thead>
               <tbody>
@@ -424,30 +505,23 @@ export default function Home() {
                 ))}
               </tbody>
             </table>
-
             {warnings.length > 0 && (
               <div style={s.warn}>
                 <b>Warnings:</b>
-                <ul style={{ marginTop: 4 }}>
-                  {warnings.map((w, i) => <li key={i}>{w}</li>)}
-                </ul>
+                <ul style={{ marginTop: 4 }}>{warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
               </div>
             )}
           </div>
         </div>
 
-        {/* Sidebar: Age rules editor */}
+        {/* Age rules editor */}
         <div>
           <div style={s.card}>
             <div style={s.label}>Age Group Rules (editable)</div>
             <table style={s.table}>
               <thead>
                 <tr>
-                  <th style={s.th}>Age</th>
-                  <th style={s.th}>Halves</th>
-                  <th style={s.th}>Half (min)</th>
-                  <th style={s.th}>Halftime (min)</th>
-                  <th style={s.th}>Total</th>
+                  <th style={s.th}>Age</th><th style={s.th}>Halves</th><th style={s.th}>Half (min)</th><th style={s.th}>Halftime (min)</th><th style={s.th}>Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -458,34 +532,16 @@ export default function Home() {
                     <tr key={age}>
                       <td style={s.td}><b>{age}</b></td>
                       <td style={s.td}>
-                        <input
-                          type="number" min="1"
-                          value={r.halves}
-                          onChange={(e) =>
-                            setAgeRules((prev) => ({ ...prev, [age]: { ...prev[age], halves: Math.max(1, Number(e.target.value||1)) } }))
-                          }
-                          style={s.number}
-                        />
+                        <input type="number" min="1" value={r.halves}
+                          onChange={(e) => setAgeRules((p) => ({ ...p, [age]: { ...p[age], halves: Math.max(1, Number(e.target.value||1)) } }))} style={s.number}/>
                       </td>
                       <td style={s.td}>
-                        <input
-                          type="number" min="1"
-                          value={r.halfDuration}
-                          onChange={(e) =>
-                            setAgeRules((prev) => ({ ...prev, [age]: { ...prev[age], halfDuration: Math.max(1, Number(e.target.value||1)) } }))
-                          }
-                          style={s.number}
-                        />
+                        <input type="number" min="1" value={r.halfDuration}
+                          onChange={(e) => setAgeRules((p) => ({ ...p, [age]: { ...p[age], halfDuration: Math.max(1, Number(e.target.value||1)) } }))} style={s.number}/>
                       </td>
                       <td style={s.td}>
-                        <input
-                          type="number" min="0"
-                          value={r.halftime}
-                          onChange={(e) =>
-                            setAgeRules((prev) => ({ ...prev, [age]: { ...prev[age], halftime: Math.max(0, Number(e.target.value||0)) } }))
-                          }
-                          style={s.number}
-                        />
+                        <input type="number" min="0" value={r.halftime}
+                          onChange={(e) => setAgeRules((p) => ({ ...p, [age]: { ...p[age], halftime: Math.max(0, Number(e.target.value||0)) } }))} style={s.number}/>
                       </td>
                       <td style={s.td}>{total}m</td>
                     </tr>
@@ -494,27 +550,11 @@ export default function Home() {
               </tbody>
             </table>
             <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={() => {
-                const dayStart = new Date(`1970-01-01T${startTime}:00`);
-                const dayEnd = new Date(`1970-01-01T${endTime}:00`);
-                const out = [];
-                for (const f of FIELDS) {
-                  const ordered = fieldList(f);
-                  const recomputed = recomputeFieldTimes(ordered, dayStart, dayEnd);
-                  out.push(...recomputed);
-                }
-                out.sort((a, b) => a.startTime - b.startTime || a.field.localeCompare(b.field));
-                setSchedule(out);
-                setWarnings(validateConflicts(out));
-                setMessage("Applied age-rule changes & recomputed times");
-                setTimeout(() => setMessage(""), 1500);
-              }} style={s.btnGreen}>Apply Rules & Recompute</button>
-              <button onClick={() => setAgeRules(BASE_RULES)} style={s.btnGray} title="Restore default durations">
-                Reset to Defaults
-              </button>
+              <button onClick={applyRulesAndRecompute} style={s.btnGreen}>Apply Rules & Recompute</button>
+              <button onClick={() => setAgeRules(BASE_RULES)} style={s.btnGray}>Reset to Defaults</button>
             </div>
             <div style={{ marginTop: 6, fontSize: 12, color: "#374151" }}>
-              Note: recompute keeps the same order on each field; only the times change.
+              Recompute keeps the same order per field; only times change.
             </div>
           </div>
         </div>
@@ -534,9 +574,9 @@ export default function Home() {
               <div>{m.field}</div>
               <div>{format(m.startTime, "HH:mm")} – {format(m.endTime, "HH:mm")}</div>
               <div style={{ fontSize: 12, marginTop: 6, color: "#374151" }}>
-                1st: {format(m.startTime, "HH:mm")}–{format(firstHalfEnd, "HH:mm")}
-                {" • "}HT: {format(firstHalfEnd, "HH:mm")}–{format(secondHalfStart, "HH:mm")}
-                {" • "}2nd: {format(secondHalfStart, "HH:mm")}–{format(secondHalfEnd, "HH:mm")}
+                1st: {format(m.startTime, "HH:mm")}–{format(firstHalfEnd, "HH:mm")} •
+                HT: {format(firstHalfEnd, "HH:mm")}–{format(secondHalfStart, "HH:mm")} •
+                2nd: {format(secondHalfStart, "HH:mm")}–{format(secondHalfEnd, "HH:mm")}
               </div>
             </div>
           );
@@ -556,9 +596,7 @@ export default function Home() {
             {warnings.length > 0 && (
               <div style={{ ...s.warn, marginTop: 8 }}>
                 <b>Warnings:</b>
-                <ul style={{ marginTop: 4 }}>
-                  {warnings.map((w, i) => <li key={i}>{w}</li>)}
-                </ul>
+                <ul style={{ marginTop: 4 }}>{warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
               </div>
             )}
             <div style={s.devCredit}>Developer N. van Rooyen</div>
@@ -566,7 +604,7 @@ export default function Home() {
         );
       }, [schedule, warnings])}
 
-      {/* Print-only pages with header + footer credit */}
+      {/* Print-only pages */}
       <div className="print-only">
         {FIELDS.map((f) => (
           <div key={f} className="page">
