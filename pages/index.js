@@ -1,4 +1,4 @@
-
+// pages/index.js
 import React, { useEffect, useMemo, useState } from "react";
 import { addMinutes, format } from "date-fns";
 
@@ -18,7 +18,7 @@ const BASE_RULES = {
 const FIELDS = ["Field A", "Field B"];
 const BETWEEN_MATCHES_BREAK = 7;
 
-// Constraints you requested earlier:
+// Constraints:
 const AFTERNOON_ONLY = new Set(["U14","U15","U16","U18"]); // earliest 13:00
 const AGES_A_ONLY    = new Set(["U13","U14","U15","U16","U18"]); // A-field only
 const AFTERNOON_START_STR = "13:00";
@@ -61,7 +61,6 @@ export default function Home() {
   const [schedule, setSchedule] = useState([]);
   const [message, setMessage] = useState("");
 
-  // Print header settings
   const [hostName, setHostName] = useState("Centurion Youth Rugby Club");
   const [logoUrl, setLogoUrl] = useState("");
 
@@ -71,7 +70,7 @@ export default function Home() {
   const [swapB, setSwapB] = useState("");
   const [warnings, setWarnings] = useState([]);
 
-  // Load saved config (including customized rules)
+  // Load saved config
   useEffect(() => {
     try {
       const raw = localStorage.getItem("rugbySchedulerConfig");
@@ -158,7 +157,7 @@ export default function Home() {
     );
   };
 
-  // Build cross-club pairings (randomize ages by shuffle)
+  // Build pairings and shuffle
   const buildMatches = () => {
     const matches = [];
     Object.keys(ageRules).forEach((age) => {
@@ -184,7 +183,6 @@ export default function Home() {
     return matches;
   };
 
-  // Helper: detect parallel same-club conflict at a given proposed start
   const conflictAt = (list, candidateStart, age, clubsToCheck) =>
     list.some(
       (x) =>
@@ -193,14 +191,12 @@ export default function Home() {
         (clubsToCheck.includes(x.teamA.club) || clubsToCheck.includes(x.teamB.club))
     );
 
-  // Generate schedule (kept same behaviour + constraints)
   const generateSchedule = () => {
     const matches = buildMatches();
     const dayStart = new Date(`1970-01-01T${startTime}:00`);
     const dayEnd = new Date(`1970-01-01T${endTime}:00`);
     const afternoonStart = new Date(`1970-01-01T${AFTERNOON_START_STR}:00`);
     const fieldTimes = { "Field A": new Date(dayStart), "Field B": new Date(dayStart) };
-    const fieldCounts = { "Field A": 0, "Field B": 0 };
     const out = [];
 
     for (const m of matches) {
@@ -216,63 +212,20 @@ export default function Home() {
 
       const valid = candidates.filter((c) => c.fits);
       if (!valid.length) continue;
-
       valid.sort((a, b) => (a.end.getTime() !== b.end.getTime() ? a.end - b.end : 0));
       const chosen = valid[0];
 
       out.push({ ...m, field: chosen.field, startTime: chosen.start, endTime: chosen.end });
 
-      // next slot on that field = chosen.end + 7m
       const nextStart = addMinutes(chosen.end, BETWEEN_MATCHES_BREAK);
       fieldTimes[chosen.field] = nextStart;
-      fieldCounts[chosen.field] += 1;
     }
 
-    // sort by time for nicer view
     out.sort((a, b) => a.startTime - b.startTime || a.field.localeCompare(b.field));
     setSchedule(out);
     setWarnings(validateConflicts(out));
   };
 
-  // Export CSV
-  const exportCSV = () => {
-    if (!schedule.length) return;
-    const headers = ["Field", "Age Group", "Start Time", "End Time", "Team A", "Team B"];
-    const rows = schedule.map((m) => [
-      m.field, m.age, format(m.startTime, "HH:mm"), format(m.endTime, "HH:mm"), m.teamA.name, m.teamB.name
-    ]);
-    const csv = [headers, ...rows].map((r) => r.join(",")).join("\\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "match_schedule.csv"; a.click();
-  };
-
-  // ---------- Swap & Recompute ----------
-
-  // Return ordered matches for a field (by start time)
-  const fieldList = (field) =>
-    schedule.filter((m) => m.field === field).sort((a, b) => a.startTime - b.startTime);
-
-  // Recompute sequential times for ONE field, preserving match order
-  const recomputeFieldTimes = (listForField, dayStart, dayEnd) => {
-    const afternoonStart = new Date(`1970-01-01T${AFTERNOON_START_STR}:00`);
-    let t = new Date(dayStart);
-    const recomputed = [];
-
-    for (const m of listForField) {
-      if (AFTERNOON_ONLY.has(m.age) && t < afternoonStart) t = new Date(afternoonStart);
-      // ages A-only constraint
-      const fieldAllowed = AGES_A_ONLY.has(m.age) ? "Field A" : m.field;
-      const start = new Date(t);
-      const end = addMinutes(start, matchDuration(m.age));
-      recomputed.push({ ...m, field: fieldAllowed, startTime: start, endTime: end });
-      t = addMinutes(end, BETWEEN_MATCHES_BREAK);
-    }
-    return recomputed;
-  };
-
-  // Validate manual conflicts after any change
   const validateConflicts = (all) => {
     const msgs = [];
     for (let i = 0; i < all.length; i++) {
@@ -297,50 +250,70 @@ export default function Home() {
     return Array.from(new Set(msgs));
   };
 
-  // Swap two positions on a field (1-based indices from the field’s ordered list)
+  // ----- Swap and recompute (per-field) -----
+  const fieldList = (field) =>
+    schedule.filter((m) => m.field === field).sort((a, b) => a.startTime - b.startTime);
+
+  const recomputeFieldTimes = (listForField, dayStart, dayEnd) => {
+    const afternoonStart = new Date(`1970-01-01T${AFTERNOON_START_STR}:00`);
+    let t = new Date(dayStart);
+    const recomputed = [];
+    for (const m of listForField) {
+      if (AFTERNOON_ONLY.has(m.age) && t < afternoonStart) t = new Date(afternoonStart);
+      const start = new Date(t);
+      const end = addMinutes(start, matchDuration(m.age));
+      recomputed.push({ ...m, startTime: start, endTime: end });
+      t = addMinutes(end, BETWEEN_MATCHES_BREAK);
+    }
+    return recomputed;
+  };
+
   const swapOnField = () => {
     const a = parseInt(swapA, 10);
     const b = parseInt(swapB, 10);
     if (!a || !b || a === b) return;
-
     const dayStart = new Date(`1970-01-01T${startTime}:00`);
     const dayEnd = new Date(`1970-01-01T${endTime}:00`);
-
     const list = fieldList(swapField);
     if (a < 1 || a > list.length || b < 1 || b > list.length) return;
-
     const swapped = [...list];
     [swapped[a - 1], swapped[b - 1]] = [swapped[b - 1], swapped[a - 1]];
-
     const recomputed = recomputeFieldTimes(swapped, dayStart, dayEnd);
-
     const others = schedule.filter((m) => m.field !== swapField);
-    const merged = [...others, ...recomputed];
-    merged.sort((x, y) => x.startTime - y.startTime || x.field.localeCompare(y.field));
+    const merged = [...others, ...recomputed].sort((x, y) => x.startTime - y.startTime || x.field.localeCompare(y.field));
     setSchedule(merged);
-
     setWarnings(validateConflicts(merged));
     setMessage(`Swapped ${swapField} game ${a} with ${b}`);
     setTimeout(() => setMessage(""), 1500);
   };
 
-  // Recompute ALL fields after rule changes (preserving order within each field)
-  const applyRulesAndRecompute = () => {
-    const dayStart = new Date(`1970-01-01T${startTime}:00`);
-    const dayEnd = new Date(`1970-01-01T${endTime}:00`);
+  // ---------- Export XLSX (two sheets: Field A & Field B) ----------
+  const exportXLSX = async () => {
+    if (!schedule.length) return;
+    const XLSX = await import("xlsx"); // dynamic to avoid SSR issues
+    const headers = ["Field", "Age Group", "Start Time", "End Time", "Team A", "Team B"];
 
-    const out = [];
+    const wb = XLSX.utils.book_new();
     for (const f of FIELDS) {
-      const ordered = fieldList(f);
-      const recomputed = recomputeFieldTimes(ordered, dayStart, dayEnd);
-      out.push(...recomputed);
+      const rows = schedule
+        .filter((m) => m.field === f)
+        .sort((a, b) => a.startTime - b.startTime)
+        .map((m) => [
+          m.field,
+          m.age,
+          format(m.startTime, "HH:mm"),
+          format(m.endTime, "HH:mm"),
+          m.teamA.name,
+          m.teamB.name
+        ]);
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws["!cols"] = [{ wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 40 }, { wch: 40 }];
+      XLSX.utils.book_append_sheet(wb, ws, f.replace(" ", "_"));
     }
-    out.sort((a, b) => a.startTime - b.startTime || a.field.localeCompare(b.field));
-    setSchedule(out);
-    setWarnings(validateConflicts(out));
-    setMessage("Applied age-rule changes & recomputed times");
-    setTimeout(() => setMessage(""), 1500);
+    XLSX.writeFile(wb, "match_schedule.xlsx");
   };
+
+  /* -------------------- UI -------------------- */
 
   return (
     <div style={s.page}>
@@ -413,7 +386,7 @@ export default function Home() {
               <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} style={s.input} />
               <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={s.input} />
               <button onClick={generateSchedule} style={s.btn}>Generate Schedule</button>
-              <button onClick={exportCSV} style={s.btnGray}>Export CSV</button>
+              <button onClick={exportXLSX} style={s.btnGray}>Export Excel (XLSX)</button>
               {schedule.length > 0 ? <span style={{ fontSize: 12, color: "#065f46" }}>Total Matches: {schedule.length}</span> : null}
             </div>
           </div>
@@ -521,7 +494,21 @@ export default function Home() {
               </tbody>
             </table>
             <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={applyRulesAndRecompute} style={s.btnGreen}>Apply Rules & Recompute</button>
+              <button onClick={() => {
+                const dayStart = new Date(`1970-01-01T${startTime}:00`);
+                const dayEnd = new Date(`1970-01-01T${endTime}:00`);
+                const out = [];
+                for (const f of FIELDS) {
+                  const ordered = fieldList(f);
+                  const recomputed = recomputeFieldTimes(ordered, dayStart, dayEnd);
+                  out.push(...recomputed);
+                }
+                out.sort((a, b) => a.startTime - b.startTime || a.field.localeCompare(b.field));
+                setSchedule(out);
+                setWarnings(validateConflicts(out));
+                setMessage("Applied age-rule changes & recomputed times");
+                setTimeout(() => setMessage(""), 1500);
+              }} style={s.btnGreen}>Apply Rules & Recompute</button>
               <button onClick={() => setAgeRules(BASE_RULES)} style={s.btnGray} title="Restore default durations">
                 Reset to Defaults
               </button>
