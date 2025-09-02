@@ -1,18 +1,21 @@
-# Rugby Hosting Day Scheduler
+# Rugby Hosting Day Scheduler (with Requests & Swaps)
 
 - Next.js single-page app
-- Randomized fixtures, balanced fields
-- Constraints: U14–U18 only after 13:00; U13–U18 on Field A only
-- 7 minutes only **between** matches
-- No same-club in parallel at the same time (per age)
-- Per-team requested caps (comma-separated), plus default cap per age
-- Swap by position on a field (with recompute)
-- Editable age rules (per age)
-- Print pages (A4), CSV/XLSX export
-- **XLSX with logo** via ExcelJS (button: Export Excel (Logo))
+- Randomized fixtures, balanced fields, per-team caps & requested games, editable age rules
+- Requests/Constraints per age (priority, earliest start, latest end, field policy)
+- Swap matches by position per field with recompute
+- 7-minute breaks **between** matches
+- Prevent same-club parallel games at same time in same age
+- Print pages (A4) with logo + host header, footer credit
+- Export Excel (XLSX) split by Field, and Excel with embedded logo
+- Save/Load/Clear settings in localStorage
 
-## Run
+## Dev
 ```bash
 npm i
 npm run dev
+```
+## Build
+```bash
+npm run build && npm start
 ```

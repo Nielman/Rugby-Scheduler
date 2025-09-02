@@ -1,4 +1,3 @@
-// pages/index.js
 import React, { useEffect, useMemo, useState } from "react";
 import { addMinutes, format } from "date-fns";
 
@@ -18,7 +17,7 @@ const BASE_RULES = {
 const FIELDS = ["Field A", "Field B"];
 const BETWEEN_MATCHES_BREAK = 7;
 
-// Constraints: U14–U18 only after 13:00; U13–U18 must be on Field A
+// Defaults: U14–U18 only after 13:00; U13–U18 on Field A only (can be overridden by Requests)
 const AFTERNOON_ONLY = new Set(["U14","U15","U16","U18"]);
 const AGES_A_ONLY    = new Set(["U13","U14","U15","U16","U18"]);
 const AFTERNOON_START_STR = "13:00";
@@ -34,7 +33,7 @@ const s = {
   btn: { background: "#2563eb", color: "#fff", border: 0, borderRadius: 6, padding: "8px 12px", cursor: "pointer" },
   btnGreen: { background: "#16a34a", color: "#fff", border: 0, borderRadius: 6, padding: "8px 12px", cursor: "pointer" },
   btnGray: { background: "#6b7280", color: "#fff", border: 0, borderRadius: 6, padding: "8px 12px", cursor: "pointer" },
-  grid2: { display: "grid", gridTemplateColumns: "1fr 360px", gap: 16, alignItems: "start" },
+  grid2: { display: "grid", gridTemplateColumns: "1fr 420px", gap: 16, alignItems: "start" },
   card: { border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, background: "#f9fafb" },
   label: { fontSize: 12, color: "#374151" },
   success: { color: "#16a34a", fontWeight: 600, marginTop: 4, marginBottom: 6 },
@@ -64,11 +63,15 @@ export default function Home() {
   const [hostName, setHostName] = useState("Centurion Youth Rugby Club");
   const [logoUrl, setLogoUrl] = useState("");
 
-  // swap UI + warnings
+  // Swap UI + warnings
   const [swapField, setSwapField] = useState("Field A");
   const [swapA, setSwapA] = useState("");
   const [swapB, setSwapB] = useState("");
   const [warnings, setWarnings] = useState([]);
+
+  // Requests/Constraints per age
+  // fields: DEFAULT | A_ONLY | B_ONLY | A_B
+  const [requests, setRequests] = useState({}); 
 
   // ---------- persistence ----------
   useEffect(() => {
@@ -82,12 +85,13 @@ export default function Home() {
       if (data?.hostName) setHostName(data.hostName);
       if (data?.logoUrl) setLogoUrl(data.logoUrl);
       if (data?.ageRules) setAgeRules(data.ageRules);
+      if (data?.requests) setRequests(data.requests);
       setSelectedClub((data?.clubs?.[0]?.name) || "Centurion Youth Rugby Club");
     } catch {}
   }, []);
 
   const saveConfig = () => {
-    const data = { clubs, startTime, endTime, hostName, logoUrl, ageRules };
+    const data = { clubs, startTime, endTime, hostName, logoUrl, ageRules, requests };
     localStorage.setItem("rugbySchedulerConfig", JSON.stringify(data));
     setMessage("Config saved"); setTimeout(() => setMessage(""), 1500);
   };
@@ -102,6 +106,7 @@ export default function Home() {
       if (data?.hostName) setHostName(data.hostName);
       if (data?.logoUrl) setLogoUrl(data.logoUrl);
       if (data?.ageRules) setAgeRules(data.ageRules);
+      if (data?.requests) setRequests(data.requests);
       setSelectedClub((data?.clubs?.[0]?.name) || "Centurion Youth Rugby Club");
       setMessage("Config loaded"); setTimeout(() => setMessage(""), 1500);
     } catch {}
@@ -111,10 +116,15 @@ export default function Home() {
     setMessage("Saved config cleared"); setTimeout(() => setMessage(""), 1500);
   };
 
-  // ---------- clubs/teams & desired caps (and per-team caps) ----------
+  // ---------- clubs/teams & caps ----------
   const normalizeEntry = (raw) => {
+    if (raw == null) return { count: 0, desired: "", caps: "" };
     if (typeof raw === "number") return { count: raw, desired: "", caps: "" };
-    return { count: Number(raw?.count || 0), desired: raw?.desired ?? "", caps: raw?.caps ?? "" };
+    return {
+      count: Number(raw?.count ?? 0),
+      desired: raw?.desired ?? "",
+      caps: raw?.caps ?? ""
+    };
   };
 
   const setDesiredFor = (clubName, age, desired) => {
@@ -122,8 +132,8 @@ export default function Home() {
       prev.map((c) => {
         if (c.name !== clubName) return c;
         const nt = { ...(c.teams || {}) };
-        const entry = normalizeEntry(nt[age] || { count: 0, desired: "", caps: "" });
-        nt[age] = { count: entry.count, desired, caps: entry.caps };
+        const entry = normalizeEntry(nt[age]);
+        nt[age] = { ...entry, desired };
         return { ...c, teams: nt };
       })
     );
@@ -134,21 +144,11 @@ export default function Home() {
       prev.map((c) => {
         if (c.name !== clubName) return c;
         const nt = { ...(c.teams || {}) };
-        const entry = normalizeEntry(nt[age] || { count: 0, desired: "", caps: "" });
-        nt[age] = { count: entry.count, desired: entry.desired, caps };
+        const entry = normalizeEntry(nt[age]);
+        nt[age] = { ...entry, caps };
         return { ...c, teams: nt };
       })
     );
-  };
-
-  const parseCaps = (capsStr) => {
-    if (!capsStr && capsStr !== 0) return [];
-    return String(capsStr)
-      .split(",")
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0)
-      .map((t) => (t === "" ? null : Number(t)))
-      .map((n) => (Number.isFinite(n) ? n : null));
   };
 
   const matchDuration = (age) => {
@@ -170,9 +170,8 @@ export default function Home() {
       prev.map((c) => {
         if (c.name !== selectedClub) return c;
         const nt = { ...(c.teams || {}) };
-        const current = nt[selectedAgeGroup];
-        const entry = normalizeEntry(current || { count: 0, desired: "", caps: "" });
-        nt[selectedAgeGroup] = { count: entry.count + Number(teamCount), desired: entry.desired, caps: entry.caps };
+        const entry = normalizeEntry(nt[selectedAgeGroup]);
+        nt[selectedAgeGroup] = { ...entry, count: entry.count + Number(teamCount) };
         return { ...c, teams: nt };
       })
     );
@@ -196,6 +195,37 @@ export default function Home() {
     );
   };
 
+  // ---------- Requests helpers ----------
+  const getAllowedFieldsForAge = (age) => {
+    const req = requests[age] || {};
+    const policy = req.fieldPolicy || "DEFAULT";
+    if (policy === "A_ONLY") return ["Field A"];
+    if (policy === "B_ONLY") return ["Field B"];
+    if (policy === "A_B")    return FIELDS.slice();
+    // default policy
+    return AGES_A_ONLY.has(age) ? ["Field A"] : FIELDS.slice();
+  };
+
+  const getEarliestStartForAge = (age, dayStart) => {
+    const req = requests[age] || {};
+    if (req.earliestStart && req.earliestStart.length === 5) {
+      return new Date(`1970-01-01T${req.earliestStart}:00`);
+    }
+    // default earliest for afternoon-only ages
+    if (AFTERNOON_ONLY.has(age)) return new Date(`1970-01-01T${AFTERNOON_START_STR}:00`);
+    return new Date(dayStart);
+  };
+
+  const getLatestEndForAge = (age, dayEnd) => {
+    const req = requests[age] || {};
+    if (req.latestEnd && req.latestEnd.length === 5) {
+      return new Date(`1970-01-01T${req.latestEnd}:00`);
+    }
+    return new Date(dayEnd);
+  };
+
+  const isPriorityAge = (age) => !!(requests[age]?.priority);
+
   // ---------- build pairings ----------
   const buildMatches = () => {
     const matches = [];
@@ -215,15 +245,18 @@ export default function Home() {
         }
       }
     });
+    // shuffle
     for (let i = matches.length - 1; i > 0; i--) {
       const k = Math.floor(Math.random() * (i + 1));
       [matches[i], matches[k]] = [matches[k], matches[i]];
     }
+    // priority ages first
+    matches.sort((a, b) => Number(isPriorityAge(b.age)) - Number(isPriorityAge(a.age)));
     return matches;
   };
 
   // helper: clash same age + same hh:mm + overlapping club
-  const conflictAt = (list, candidateStart, age, clubsToCheck) =>
+  const parallelSameClub = (list, candidateStart, age, clubsToCheck) =>
     list.some(
       (x) =>
         x.age === age &&
@@ -231,20 +264,20 @@ export default function Home() {
         (clubsToCheck.includes(x.teamA.club) || clubsToCheck.includes(x.teamB.club))
     );
 
-  // ---------- generate schedule (with caps + constraints) ----------
+  // ---------- generate schedule (with caps + requests) ----------
   const generateSchedule = () => {
     const matches = buildMatches();
 
-    // build per-team desired caps (from default desired and per-team caps list)
+    // build per-team desired caps (default + per-team caps list)
     const desiredCap = {};
     clubs.forEach((club) => {
       Object.keys(ageRules).forEach((age) => {
         const entry = normalizeEntry(club.teams?.[age]);
-        const defaultDesired = entry.desired === "" ? Infinity : Math.max(0, Number(entry.desired));
-        const capsList = parseCaps(entry.caps);
+        const defaultCap = entry.desired === "" ? Infinity : Math.max(0, Number(entry.desired));
+        const capsList = (entry.caps || "").split(",").map(x => x.trim()).filter(x => x.length>0).map(x => Number(x));
         for (let i = 0; i < (entry.count || 0); i++) {
-          const specific = i < capsList.length && capsList[i] != null ? Math.max(0, Number(capsList[i])) : null;
-          desiredCap[`${club.name} ${age} #${i + 1}`] = specific != null ? specific : defaultDesired;
+          const perTeam = Number.isFinite(capsList[i]) ? Math.max(0, capsList[i]) : defaultCap;
+          desiredCap[`${club.name} ${age} #${i + 1}`] = perTeam;
         }
       });
     });
@@ -252,7 +285,6 @@ export default function Home() {
 
     const dayStart = new Date(`1970-01-01T${startTime}:00`);
     const dayEnd = new Date(`1970-01-01T${endTime}:00`);
-    const afternoonStart = new Date(`1970-01-01T${AFTERNOON_START_STR}:00`);
     const fieldTimes = { "Field A": new Date(dayStart), "Field B": new Date(dayStart) };
     const out = [];
 
@@ -263,14 +295,16 @@ export default function Home() {
       const capB = desiredCap[tB] ?? Infinity;
       if ((gamesByTeam[tA] || 0) >= capA || (gamesByTeam[tB] || 0) >= capB) continue;
 
-      const fieldsForAge = AGES_A_ONLY.has(m.age) ? ["Field A"] : FIELDS;
+      const allowedFields = getAllowedFieldsForAge(m.age);
+      const earliestStart = getEarliestStartForAge(m.age, dayStart);
+      const latestEnd = getLatestEndForAge(m.age, dayEnd);
 
-      const candidates = fieldsForAge.map((f) => {
+      const candidates = allowedFields.map((f) => {
         let start = new Date(fieldTimes[f]);
-        if (AFTERNOON_ONLY.has(m.age) && start < afternoonStart) start = new Date(afternoonStart);
+        if (start < earliestStart) start = new Date(earliestStart);
         const end = addMinutes(start, matchDuration(m.age));
-        const parallelConflict = conflictAt(out, start, m.age, [m.teamA.club, m.teamB.club]);
-        const fits = end <= dayEnd && !parallelConflict;
+        const parallelConflict = parallelSameClub(out, start, m.age, [m.teamA.club, m.teamB.club]);
+        const fits = end <= latestEnd && end <= dayEnd && !parallelConflict;
         return { field: f, start, end, fits };
       });
 
@@ -290,10 +324,10 @@ export default function Home() {
 
     out.sort((a, b) => a.startTime - b.startTime || a.field.localeCompare(b.field));
     setSchedule(out);
-    setWarnings(validateConflicts(out));
+    setWarnings(validateConflicts(out, dayStart, dayEnd));
   };
 
-  // ---------- export XLSX (per field) using SheetJS (no logo) ----------
+  // ---------- export XLSX (per field) ----------
   const exportXLSX = async () => {
     if (!schedule.length) return;
     const XLSX = await import("xlsx");
@@ -314,109 +348,50 @@ export default function Home() {
     XLSX.writeFile(wb, "match_schedule.xlsx");
   };
 
-  // ---------- export XLSX with LOGO using ExcelJS ----------
-  const exportXLSXWithLogo = async () => {
+  // ---------- export Excel with logo via ExcelJS ----------
+  const exportExcelLogo = async () => {
     if (!schedule.length) return;
-
-    let ExcelJS;
-    try {
-      ExcelJS = (await import("exceljs")).default;
-    } catch (e) {
-      alert("ExcelJS failed to load. Falling back to standard export.");
-      return exportXLSX();
-    }
-
+    const ExcelJS = (await import("exceljs")).default || (await import("exceljs"));
     const wb = new ExcelJS.Workbook();
-    wb.creator = hostName || "Scheduler";
-    wb.created = new Date();
-
-    // try to fetch logo as base64
-    const fetchAsBase64 = async (url) => {
-      if (!url) return null;
+    const fetchImage = async (url) => {
       try {
         const res = await fetch(url);
-        if (!res.ok) return null;
         const blob = await res.blob();
-        const reader = new FileReader();
-        const p = new Promise((resolve) => {
-          reader.onload = () => resolve(reader.result);
-        });
-        reader.readAsDataURL(blob);
-        const dataUrl = await p; // e.g. data:image/png;base64,xxxxx
-        const [, meta, b64] = String(dataUrl).match(/^data:(.+);base64,(.*)$/) || [];
-        if (!b64) return null;
-        let ext = "png";
-        if (meta && meta.includes("jpeg")) ext = "jpeg";
-        if (meta && meta.includes("jpg")) ext = "jpeg";
-        if (meta && meta.includes("png")) ext = "png";
-        return { base64: b64, extension: ext };
-      } catch {
-        return null;
-      }
+        const buf = await blob.arrayBuffer();
+        return Buffer.from(buf);
+      } catch { return null; }
     };
-
-    const logo = await fetchAsBase64(logoUrl);
     const headers = ["Field", "Age Group", "Start Time", "End Time", "Team A", "Team B"];
-
     for (const f of FIELDS) {
       const ws = wb.addWorksheet(f.replace(" ", "_"));
-      // column widths
-      ws.columns = [
-        { header: "Field", key: "field", width: 12 },
-        { header: "Age Group", key: "age", width: 12 },
-        { header: "Start Time", key: "start", width: 12 },
-        { header: "End Time", key: "end", width: 12 },
-        { header: "Team A", key: "a", width: 40 },
-        { header: "Team B", key: "b", width: 40 }
-      ];
-
-      let startRow = 1;
-      if (logo) {
-        const imageId = wb.addImage({ base64: logo.base64, extension: logo.extension });
-        // place at top-left
-        ws.addImage(imageId, {
-          tl: { col: 0, row: 0 },
-          ext: { width: 220, height: 60 }
-        });
-        startRow = 5; // leave space under logo
-      }
-
-      // Title with host and field
-      ws.mergeCells(startRow, 1, startRow, 6);
-      const titleCell = ws.getCell(startRow, 1);
-      titleCell.value = `${hostName || ""} — ${f}`.trim();
-      titleCell.font = { bold: true, size: 14 };
-      startRow += 2;
-
-      // headers
-      ws.getRow(startRow).values = headers;
-      ws.getRow(startRow).font = { bold: true };
-      startRow++;
-
-      // data rows
-      const rows = schedule
-        .filter((m) => m.field === f)
-        .sort((a, b) => a.startTime - b.startTime)
-        .map((m) => [m.field, m.age, format(m.startTime, "HH:mm"), format(m.endTime, "HH:mm"), m.teamA.name, m.teamB.name]);
-
-      rows.forEach((r, i) => {
-        ws.getRow(startRow + i).values = r;
-      });
-      // thin borders for readability
-      const lastRow = startRow + rows.length - 1;
-      for (let r = startRow - 1; r <= lastRow; r++) {
-        for (let c = 1; c <= 6; c++) {
-          ws.getCell(r, c).border = {
-            top: { style: "thin", color: { argb: "FFDDE3E8" } },
-            bottom: { style: "thin", color: { argb: "FFDDE3E8" } },
-            left: { style: "thin", color: { argb: "FFDDE3E8" } },
-            right: { style: "thin", color: { argb: "FFDDE3E8" } }
-          };
+      let rowIdx = 1;
+      // Logo
+      if (logoUrl) {
+        const imgBuf = await fetchImage(logoUrl);
+        if (imgBuf) {
+          const imageId = wb.addImage({ buffer: imgBuf, extension: logoUrl.toLowerCase().endsWith(".jpg") || logoUrl.toLowerCase().endsWith(".jpeg") ? "jpeg" : "png" });
+          ws.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 220, height: 60 } });
+          rowIdx = 5;
         }
       }
+      // Title
+      ws.mergeCells(rowIdx,1,rowIdx,6);
+      ws.getCell(rowIdx,1).value = `${hostName} — ${f}`;
+      ws.getCell(rowIdx,1).font = { bold: true, size: 14 };
+      rowIdx += 2;
+      // Headers
+      ws.addRow(headers).font = { bold: true };
+      // Rows
+      schedule
+        .filter((m) => m.field === f)
+        .sort((a,b) => a.startTime - b.startTime)
+        .forEach((m) => {
+          ws.addRow([m.field, m.age, format(m.startTime,"HH:mm"), format(m.endTime,"HH:mm"), m.teamA.name, m.teamB.name]);
+        });
+      ws.columns = [
+        { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 40 }, { width: 40 }
+      ];
     }
-
-    // download
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const a = document.createElement("a");
@@ -425,25 +400,28 @@ export default function Home() {
     a.click();
   };
 
-  // ---------- swap & recompute ----------
+  // ---------- swap & recompute respecting requests ----------
   const fieldList = (field) => schedule.filter((m) => m.field === field).sort((a, b) => a.startTime - b.startTime);
 
   const recomputeFieldTimes = (listForField, dayStart, dayEnd) => {
-    const afternoonStart = new Date(`1970-01-01T${AFTERNOON_START_STR}:00`);
     let t = new Date(dayStart);
     const recomputed = [];
     for (const m of listForField) {
-      if (AFTERNOON_ONLY.has(m.age) && t < afternoonStart) t = new Date(afternoonStart);
+      const earliestStart = getEarliestStartForAge(m.age, dayStart);
+      const latestEnd = getLatestEndForAge(m.age, dayEnd);
+      if (t < earliestStart) t = new Date(earliestStart);
       const start = new Date(t);
       const end = addMinutes(start, matchDuration(m.age));
+      // We don't drop matches here; warn later if > latestEnd
       recomputed.push({ ...m, startTime: start, endTime: end });
       t = addMinutes(end, BETWEEN_MATCHES_BREAK);
     }
     return recomputed;
   };
 
-  const validateConflicts = (all) => {
+  const validateConflicts = (all, dayStart, dayEnd) => {
     const msgs = [];
+    // parallel same-club
     for (let i = 0; i < all.length; i++) {
       for (let j = i + 1; j < all.length; j++) {
         const a = all[i], b = all[j];
@@ -451,15 +429,19 @@ export default function Home() {
         if (format(a.startTime, "HH:mm") !== format(b.startTime, "HH:mm")) continue;
         const clubs = [a.teamA.club, a.teamB.club];
         if (clubs.includes(b.teamA.club) || clubs.includes(b.teamB.club)) {
-          msgs.push(`Parallel same-club conflict at ${format(a.startTime, "HH:mm")} for ${a.age} (${a.field} vs ${b.field}).`);
+          msgs.push(`Parallel same-club conflict at ${format(a.startTime,"HH:mm")} for ${a.age} (${a.field} vs ${b.field}).`);
         }
       }
     }
-    all.forEach((m) => {
-      if (AGES_A_ONLY.has(m.age) && m.field !== "Field A") msgs.push(`${m.age} must be on Field A (found on ${m.field}).`);
-      if (AFTERNOON_ONLY.has(m.age) && format(m.startTime, "HH:mm") < AFTERNOON_START_STR)
-        msgs.push(`${m.age} cannot start before ${AFTERNOON_START_STR} (found ${format(m.startTime, "HH:mm")}).`);
-    });
+    // field policy & time window checks
+    for (const m of all) {
+      const allowed = getAllowedFieldsForAge(m.age);
+      if (!allowed.includes(m.field)) msgs.push(`${m.age} not allowed on ${m.field} (allowed: ${allowed.join(", ")}).`);
+      const earliest = getEarliestStartForAge(m.age, dayStart);
+      const latest = getLatestEndForAge(m.age, dayEnd);
+      if (m.startTime < earliest) msgs.push(`${m.age} cannot start before ${format(earliest,"HH:mm")} (found ${format(m.startTime,"HH:mm")}).`);
+      if (m.endTime > latest) msgs.push(`${m.age} should end by ${format(latest,"HH:mm")} (found ${format(m.endTime,"HH:mm")}).`);
+    }
     return Array.from(new Set(msgs));
   };
 
@@ -481,7 +463,7 @@ export default function Home() {
     const others = schedule.filter((m) => m.field !== swapField);
     const merged = [...others, ...recomputed].sort((x, y) => x.startTime - y.startTime || x.field.localeCompare(y.field));
     setSchedule(merged);
-    setWarnings(validateConflicts(merged));
+    setWarnings(validateConflicts(merged, dayStart, dayEnd));
     setMessage(`Swapped ${swapField} game ${a} with ${b}`); setTimeout(() => setMessage(""), 1500);
   };
 
@@ -492,9 +474,11 @@ export default function Home() {
     for (const f of FIELDS) out.push(...recomputeFieldTimes(fieldList(f), dayStart, dayEnd));
     out.sort((a, b) => a.startTime - b.startTime || a.field.localeCompare(b.field));
     setSchedule(out);
-    setWarnings(validateConflicts(out));
-    setMessage("Applied age-rule changes & recomputed times"); setTimeout(() => setMessage(""), 1500);
+    setWarnings(validateConflicts(out, dayStart, dayEnd));
+    setMessage("Applied changes & recomputed times"); setTimeout(() => setMessage(""), 1500);
   };
+
+  const applyRequestsAndRecompute = applyRulesAndRecompute;
 
   /* -------------------- UI -------------------- */
   return (
@@ -534,9 +518,9 @@ export default function Home() {
             <button onClick={addTeamToClub} style={s.btnGreen}>Add Teams</button>
           </div>
 
-          {/* Clubs & Teams with per-team requested games */}
+          {/* Clubs & Teams with per-team caps */}
           <div style={s.card}>
-            <div style={s.label}>Current Clubs & Teams (set requested games / team and per-team caps)</div>
+            <div style={s.label}>Current Clubs & Teams (requested games / team & per-team caps)</div>
             <ul style={{ marginTop: 6 }}>
               {clubs.map((club) => (
                 <li key={club.name} style={{ marginTop: 6 }}>
@@ -552,22 +536,23 @@ export default function Home() {
                         const entry = normalizeEntry(raw);
                         const total = matchDuration(age);
                         return (
-                          <li key={age} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                            <span>{age}: {entry.count} team(s)</span>
+                          <li key={age} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                            <span><b>{age}</b>: {entry.count} team(s)</span>
                             <input
                               type="number" min="0"
                               placeholder="requested games / team"
                               value={entry.desired}
                               onChange={(e) => setDesiredFor(club.name, age, e.target.value)}
-                              style={{ ...s.input, width: 190 }}
-                              title="Blank = unlimited; 0 = exclude"
+                              style={{ ...s.input, width: 170 }}
+                              title="Blank = unlimited; 0 = exclude all teams by default"
                             />
                             <input
-                              placeholder="Per-team caps (e.g. 2,1,1)"
+                              type="text"
+                              placeholder="Per-team caps e.g. 2,1,1"
                               value={entry.caps}
                               onChange={(e) => setCapsFor(club.name, age, e.target.value)}
-                              style={{ ...s.input, width: 220 }}
-                              title="Comma-separated caps by team index; missing = use default"
+                              style={{ ...s.input, width: 180 }}
+                              title="Comma-separated caps by team index; blank entries use default cap"
                             />
                             <span style={{ fontSize: 12, color: "#374151" }}>match time: {total}m</span>
                             <button onClick={() => removeAgeFromClub(club.name, age)} style={{ ...s.btnGray, padding: "2px 8px" }}>✕</button>
@@ -589,7 +574,7 @@ export default function Home() {
               <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={s.input} />
               <button onClick={generateSchedule} style={s.btn}>Generate Schedule</button>
               <button onClick={exportXLSX} style={s.btnGray}>Export Excel (XLSX)</button>
-              <button onClick={exportXLSXWithLogo} style={s.btnGray}>Export Excel (Logo)</button>
+              <button onClick={exportExcelLogo} style={s.btnGray}>Export Excel (Logo)</button>
               {schedule.length > 0 ? <span style={{ fontSize: 12, color: "#065f46" }}>Total Matches: {schedule.length}</span> : null}
             </div>
           </div>
@@ -631,14 +616,18 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Age rules editor */}
+        {/* Sidebar: Age rules + Requests */}
         <div>
           <div style={s.card}>
             <div style={s.label}>Age Group Rules (editable)</div>
             <table style={s.table}>
               <thead>
                 <tr>
-                  <th style={s.th}>Age</th><th style={s.th}>Halves</th><th style={s.th}>Half (min)</th><th style={s.th}>Halftime (min)</th><th style={s.th}>Total</th>
+                  <th style={s.th}>Age</th>
+                  <th style={s.th}>Halves</th>
+                  <th style={s.th}>Half (min)</th>
+                  <th style={s.th}>Halftime (min)</th>
+                  <th style={s.th}>Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -672,6 +661,54 @@ export default function Home() {
             </div>
             <div style={{ marginTop: 6, fontSize: 12, color: "#374151" }}>
               Recompute keeps the same order per field; only times change.
+            </div>
+          </div>
+
+          <div style={s.card}>
+            <div style={s.label}>Requests / Constraints (per age)</div>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Age</th>
+                  <th style={s.th}>Priority</th>
+                  <th style={s.th}>Earliest Start</th>
+                  <th style={s.th}>Latest End</th>
+                  <th style={s.th}>Fields</th>
+                </tr>
+              </thead>
+              <tbody>
+                {AGE_GROUPS.map((age) => {
+                  const r = requests[age] || {};
+                  return (
+                    <tr key={age}>
+                      <td style={s.td}><b>{age}</b></td>
+                      <td style={s.td}>
+                        <input type="checkbox" checked={!!r.priority} onChange={(e) => setRequests((p) => ({ ...p, [age]: { ...p[age], priority: e.target.checked } }))} />
+                      </td>
+                      <td style={s.td}>
+                        <input type="time" value={r.earliestStart || ""} onChange={(e) => setRequests((p) => ({ ...p, [age]: { ...p[age], earliestStart: e.target.value } }))} style={s.input} />
+                      </td>
+                      <td style={s.td}>
+                        <input type="time" value={r.latestEnd || ""} onChange={(e) => setRequests((p) => ({ ...p, [age]: { ...p[age], latestEnd: e.target.value } }))} style={s.input} />
+                      </td>
+                      <td style={s.td}>
+                        <select value={r.fieldPolicy || "DEFAULT"} onChange={(e) => setRequests((p) => ({ ...p, [age]: { ...p[age], fieldPolicy: e.target.value } }))} style={s.select}>
+                          <option value="DEFAULT">Default</option>
+                          <option value="A_ONLY">A only</option>
+                          <option value="B_ONLY">B only</option>
+                          <option value="A_B">A & B</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={applyRequestsAndRecompute} style={s.btnGreen}>Apply Requests & Recompute</button>
+            </div>
+            <div style={{ marginTop: 6, fontSize: 12, color: "#374151" }}>
+              Tip: Set U16 <i>Earliest Start</i> to move them earlier than 13:00; set <i>Latest End</i> to enforce finish-by time.
             </div>
           </div>
         </div>
