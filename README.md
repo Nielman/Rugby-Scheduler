@@ -1,21 +1,31 @@
-# Rugby Hosting Day Scheduler (with Requests & Swaps)
+# Rugby Hosting Day Scheduler
 
-- Next.js single-page app
-- Randomized fixtures, balanced fields, per-team caps & requested games, editable age rules
-- Requests/Constraints per age (priority, earliest start, latest end, field policy)
-- Swap matches by position per field with recompute
-- 7-minute breaks **between** matches
-- Prevent same-club parallel games at same time in same age
-- Print pages (A4) with logo + host header, footer credit
-- Export Excel (XLSX) split by Field, and Excel with embedded logo
-- Save/Load/Clear settings in localStorage
+Next.js single-page app to generate randomized rugby match schedules across two fields with constraints.
+
+## Features
+- Clubs/teams with per-team caps (e.g. `2,1,1`) and default requested games per team
+- Age rules editable (halves/half minutes/halftime)
+- Requests/Constraints per age: priority, earliest start, latest end, field policy (default/A-only/B-only/any)
+- U14–U18 default earliest 13:00; U13–U18 default Field A (both overridable via Requests)
+- 7 minutes between matches; no parallel same-club at same time (per age)
+- Swap within a field; Move/Swap between fields (recomputes times)
+- Export Excel (.xlsx) with two sheets (Field_A, Field_B)
+- Export Excel with embedded logo (ExcelJS)
+- Print view per field with header logo & host name; footer credit
+- Save/Load/Clear config (localStorage)
 
 ## Dev
 ```bash
 npm i
 npm run dev
 ```
+
 ## Build
 ```bash
-npm run build && npm start
+npm run build
+npm start
 ```
+
+## Deploy
+Push to GitHub and import on Vercel (Next.js).
+

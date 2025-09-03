@@ -9,10 +9,10 @@
   },
   "dependencies": {
     "date-fns": "^2.30.0",
+    "exceljs": "^4.3.0",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "xlsx": "^0.18.5",
-    "exceljs": "^4.4.0"
+    "xlsx": "^0.18.5"
   }
 }
